@@ -120,7 +120,7 @@ app.post('/webhook/:clientId', async (req, res) => {
       const claudeResponse = await axios.post(
         'https://api.anthropic.com/v1/messages',
         {
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-3-5-sonnet-20241022',
           max_tokens: 500,
           system: `You are a pre-foreclosure SMS bot.
 
