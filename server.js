@@ -68,7 +68,7 @@ async function shouldRespond(contact_id) {
 app.get('/', (req, res) => {
   res.json({ 
     status: 'Claude SMS Bot - Running',
-    version: '1.0.0',
+    version: '1.0.1',
     timestamp: new Date().toISOString()
   });
 });
@@ -116,13 +116,13 @@ app.post('/webhook/:clientId', async (req, res) => {
 
       console.log(`🤖 Calling Claude API...`);
 
-      // Call Claude API with Streamlined MCP
+      // Call Claude API (simplified - no MCP)
       const claudeResponse = await axios.post(
         'https://api.anthropic.com/v1/messages',
         {
           model: 'claude-sonnet-4-20250514',
           max_tokens: 500,
-          system: `You are a pre-foreclosure SMS bot with access to Streamlined CRM data.
+          system: `You are a pre-foreclosure SMS bot.
 
 KNOWLEDGE BASE:
 ${KNOWLEDGE_BASE}
@@ -131,35 +131,27 @@ CONTACT INFO:
 - Name: ${contact_name}
 - Phone: ${phone}
 - Property: ${property_address || 'Not provided'}
-- Contact ID: ${contact_id}
 
 INSTRUCTIONS:
-1. Use Streamlined execute_query to get conversation history for this contact
-2. Query: SELECT message_body, direction, created_at FROM conversations_messages WHERE contact_id = '${contact_id}' ORDER BY created_at DESC LIMIT 10
-3. Read the full conversation context
-4. Respond according to knowledge base
-5. Keep response under 160 characters when possible
-6. Determine intent from their message
+1. Respond naturally and helpfully according to knowledge base
+2. Keep response under 160 characters when possible
+3. Determine intent from their message
+4. Be conversational and empathetic
 
-RESPONSE FORMAT (JSON):
+RESPONSE FORMAT (JSON ONLY):
 {
   "message": "Your SMS response here",
   "tag": "answered_yes|answered_no|wrong_number|spam_troll|neutral_response",
   "stop_bot": false
 }
 
-Set stop_bot to true if they say: stop, unsubscribe, remove me, don't contact`,
+Set stop_bot to true if they say: stop, unsubscribe, remove me, don't contact
+
+IMPORTANT: Respond ONLY with valid JSON. No markdown, no explanations, just the JSON object.`,
           messages: [
             {
               role: 'user',
-              content: `Latest message from contact: "${message_body}"\n\nUse Streamlined MCP to fetch conversation history, then respond appropriately.`
-            }
-          ],
-          mcp_servers: [
-            {
-              type: 'url',
-              url: 'https://gateway.streamlined.so/query/mcp',
-              name: 'streamlined-mcp'
+              content: `Contact just texted: "${message_body}"\n\nRespond appropriately in JSON format.`
             }
           ]
         },
