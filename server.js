@@ -19,17 +19,68 @@ try {
   KNOWLEDGE_BASE = 'You are a pre-foreclosure specialist helping distressed homeowners.';
 }
 
-// Business rules
+// Business rules (updated based on 400+ conversation analysis)
 const RULES = {
-  response_delay_min: 10,  // seconds
-  response_delay_max: 45,  // seconds
+  response_delay_min: 5,   // seconds (was 10 - feels more natural)
+  response_delay_max: 20,  // seconds (was 45 - faster response)
   stop_tags: ['stop_bot', 'dnd', 'manual_takeover', 'do_not_contact'],
-  max_messages_per_day: 10
+  max_messages_per_day: 3, // Conservative default (was 10)
+  message_max_length: 160, // SMS character limit
+  
+  // Stop keywords that auto-trigger stop_bot
+  stop_keywords: [
+    'stop', 'unsubscribe', 'remove me', 'dont contact', 'stop texting',
+    'cease and desist', 'lawyer', 'harassment', 'wrong number',
+    'already sold', 'not in foreclosure', 'caught up', 'refinanced'
+  ]
 };
 
 // Helper: Random delay
 function getRandomDelay(min, max) {
   return Math.floor(Math.random() * (max - min + 1) + min) * 1000;
+}
+
+// Helper: Make message sound human (remove robotic punctuation)
+function makeMessageHuman(message) {
+  if (!message) return message;
+  
+  let cleaned = message;
+  
+  // Remove dashes used as separators (but keep phone numbers with dashes)
+  // Pattern: word - word OR word- word OR word -word
+  cleaned = cleaned.replace(/(\w+)\s*-\s+(\w+)/g, '$1 $2');
+  
+  // Remove semicolons (nobody texts with semicolons!)
+  cleaned = cleaned.replace(/;/g, ',');
+  
+  // Remove em dashes and en dashes
+  cleaned = cleaned.replace(/—/g, ' ');
+  cleaned = cleaned.replace(/–/g, ' ');
+  
+  // Remove excessive ellipses (... → just remove or replace with period)
+  cleaned = cleaned.replace(/\.{3,}/g, '');
+  
+  // Clean up any double spaces created
+  cleaned = cleaned.replace(/\s{2,}/g, ' ');
+  
+  // Replace overly formal phrases with casual ones
+  const casualReplacements = {
+    'Yes - ': 'Yeah ',
+    'Yes, ': 'Yeah ',
+    'I understand - ': 'I get it ',
+    'I understand, ': 'I get it, ',
+    'Great; ': 'Great ',
+    'Certainly - ': '',
+    'Certainly, ': '',
+    'However, ': 'But ',
+    'Nevertheless, ': 'But '
+  };
+  
+  for (const [formal, casual] of Object.entries(casualReplacements)) {
+    cleaned = cleaned.replace(new RegExp(formal, 'gi'), casual);
+  }
+  
+  return cleaned.trim();
 }
 
 // Helper: Get conversation phone number from GHL
@@ -78,6 +129,65 @@ async function getConversationPhone(contact_id) {
   }
 }
 
+// Helper: Get conversation history (last 20 messages)
+async function getConversationHistory(contact_id) {
+  try {
+    console.log(`📜 Fetching conversation history for contact: ${contact_id}`);
+    
+    // First get the conversation ID
+    const convResponse = await axios.get(
+      `https://services.leadconnectorhq.com/conversations/search`,
+      {
+        params: { contactId: contact_id },
+        headers: {
+          'Authorization': `Bearer ${GHL_API_KEY}`,
+          'Version': '2021-07-28'
+        }
+      }
+    );
+
+    if (!convResponse.data.conversations || convResponse.data.conversations.length === 0) {
+      console.log(`⚠️ No conversation found for contact`);
+      return [];
+    }
+
+    const conversationId = convResponse.data.conversations[0].id;
+    console.log(`✅ Found conversation ID: ${conversationId}`);
+
+    // Get messages from this conversation (last 20)
+    const messagesResponse = await axios.get(
+      `https://services.leadconnectorhq.com/conversations/${conversationId}/messages`,
+      {
+        params: {
+          limit: 20,
+          type: 'SMS'
+        },
+        headers: {
+          'Authorization': `Bearer ${GHL_API_KEY}`,
+          'Version': '2021-07-28'
+        }
+      }
+    );
+
+    const messages = messagesResponse.data.messages || [];
+    
+    // Format messages in chronological order (oldest first)
+    const formattedHistory = messages
+      .reverse() // GHL returns newest first, we want oldest first
+      .map(msg => {
+        const direction = msg.direction === 'inbound' ? 'Contact' : 'You';
+        return `${direction}: "${msg.body}"`;
+      });
+
+    console.log(`✅ Fetched ${formattedHistory.length} messages from history`);
+    return formattedHistory;
+
+  } catch (error) {
+    console.error('❌ Error fetching conversation history:', error.response?.data || error.message);
+    return [];
+  }
+}
+
 // Helper: Check if should respond
 async function shouldRespond(contact_id) {
   try {
@@ -110,12 +220,134 @@ async function shouldRespond(contact_id) {
   }
 }
 
+// Helper: Create GHL Task
+async function createGHLTask(contact_id, action) {
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + (action.due_days || 0));
+  
+  try {
+    await axios.post(
+      `https://services.leadconnectorhq.com/contacts/${contact_id}/tasks`,
+      {
+        title: action.title,
+        body: action.notes || '',
+        dueDate: dueDate.toISOString(),
+        completed: false
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${GHL_API_KEY}`,
+          'Content-Type': 'application/json',
+          'Version': '2021-07-28'
+        }
+      }
+    );
+    console.log(`✅ Created task: ${action.title}`);
+    return true;
+  } catch (error) {
+    console.error('❌ Error creating task:', error.response?.data || error.message);
+    return false;
+  }
+}
+
+// Helper: Book GHL Appointment
+async function bookGHLAppointment(contact_id, contact_email, action) {
+  // Custom Action Plan calendar ID
+  const CALENDAR_ID = 'tpf55lDwQzdwFZ9IExaB';
+  
+  // Parse appointment time (default to tomorrow 2pm if not specified)
+  const startTime = action.start_time 
+    ? new Date(action.start_time) 
+    : new Date(Date.now() + 24 * 60 * 60 * 1000); // Tomorrow
+  
+  const endTime = new Date(startTime.getTime() + 30 * 60 * 1000); // 30 min call
+  
+  try {
+    await axios.post(
+      'https://services.leadconnectorhq.com/calendars/events/appointments',
+      {
+        calendarId: CALENDAR_ID,
+        contactId: contact_id,
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        title: action.title || 'Caruth Brothers Call',
+        appointmentStatus: 'confirmed',
+        notes: action.notes || ''
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${GHL_API_KEY}`,
+          'Content-Type': 'application/json',
+          'Version': '2021-07-28'
+        }
+      }
+    );
+    console.log(`✅ Booked appointment: ${action.title}`);
+    return true;
+  } catch (error) {
+    console.error('❌ Error booking appointment:', error.response?.data || error.message);
+    return false;
+  }
+}
+
+// Helper: Add GHL Note
+async function addGHLNote(contact_id, notes) {
+  try {
+    await axios.post(
+      `https://services.leadconnectorhq.com/contacts/${contact_id}/notes`,
+      {
+        body: notes
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${GHL_API_KEY}`,
+          'Content-Type': 'application/json',
+          'Version': '2021-07-28'
+        }
+      }
+    );
+    console.log(`✅ Added note to contact`);
+    return true;
+  } catch (error) {
+    console.error('❌ Error adding note:', error.response?.data || error.message);
+    return false;
+  }
+}
+
+// Helper: Execute Actions
+async function executeActions(contact_id, contact_email, actions) {
+  if (!actions || actions.length === 0) return;
+  
+  console.log(`🎬 Executing ${actions.length} action(s)...`);
+  
+  for (const action of actions) {
+    switch (action.type) {
+      case 'create_task':
+        await createGHLTask(contact_id, action);
+        break;
+      case 'book_appointment':
+        await bookGHLAppointment(contact_id, contact_email, action);
+        break;
+      case 'add_note':
+        await addGHLNote(contact_id, action.notes);
+        break;
+      case 'add_tag':
+        // Tag handled via main tagging system
+        console.log(`📌 Additional tag: ${action.tag}`);
+        break;
+      default:
+        console.log(`⚠️ Unknown action type: ${action.type}`);
+    }
+  }
+}
+
 // Health check endpoint
 app.get('/', (req, res) => {
   res.json({ 
     status: 'Claude SMS Bot - Running',
-    version: '1.0.2',
-    timestamp: new Date().toISOString()
+    version: '2.0.0',
+    timestamp: new Date().toISOString(),
+    features: ['conversation_history', 'objection_handling', 'actions_framework']
   });
 });
 
@@ -165,12 +397,20 @@ app.post('/webhook/:clientId', async (req, res) => {
         console.log(`✅ Will reply from: ${conversationPhone}`);
       }
 
-      // RULE: Random delay 10-45 seconds
+      // GET CONVERSATION HISTORY (CRITICAL - never restart conversations!)
+      const conversationHistory = await getConversationHistory(contact_id);
+
+      // RULE: Random delay 5-20 seconds
       const delay = getRandomDelay(RULES.response_delay_min, RULES.response_delay_max);
       console.log(`⏳ Waiting ${delay/1000}s before responding...`);
       await new Promise(resolve => setTimeout(resolve, delay));
 
       console.log(`🤖 Calling Claude API...`);
+
+      // Build conversation history string
+      const historyString = conversationHistory.length > 0
+        ? `\n\nCONVERSATION HISTORY (from oldest to newest):\n${conversationHistory.join('\n')}\n`
+        : '\n\n(No previous conversation history - this is first contact)\n';
 
       // Call Claude API
       const claudeResponse = await axios.post(
@@ -187,19 +427,35 @@ CONTACT INFO:
 - Name: ${contact_name}
 - Phone: ${phone}
 - Property: ${property_address || 'Not provided'}
-
-INSTRUCTIONS:
-1. Respond naturally and helpfully according to knowledge base
-2. Keep response under 160 characters when possible
-3. Determine intent from their message
-4. Be conversational and empathetic
+${historyString}
+CRITICAL RULES:
+1. ALWAYS READ THE CONVERSATION HISTORY ABOVE before responding
+2. NEVER restart a conversation if there is existing history
+3. If their message seems random or confusing, CHECK THE HISTORY to see if they're answering a previous question
+4. If you cannot understand what they mean even with history, add tag "speak_now" to alert the team
+5. NEVER use dashes (-), semicolons (;), or em dashes (—) in your messages
+6. Sound like a human texting casually - not a grammar bot
+7. Keep response under 160 characters when possible
+8. Use casual language: "Yeah" not "Yes", "I get it" not "I understand"
+9. Imperfect grammar is GOOD - it sounds human
+10. Be conversational and empathetic
+11. Reference their name naturally in conversation
 
 RESPONSE FORMAT (JSON ONLY):
 {
   "message": "Your SMS response here",
-  "tag": "answered_yes|answered_no|wrong_number|spam_troll|neutral_response",
+  "tag": "answered_yes|answered_no|wrong_number|spam_troll|neutral_response|speak_now",
   "stop_bot": false
 }
+
+Tags explained:
+- answered_yes: They want the video/info/help
+- answered_no: Clear rejection
+- wrong_number: Not the homeowner
+- spam_troll: Abusive/spam
+- neutral_response: Questions, vague responses
+- speak_now: Message is confusing and you need human help to interpret it
+- stop_bot: They want to stop (use stop_bot: true)
 
 Set stop_bot to true if they say: stop, unsubscribe, remove me, don't contact
 
@@ -264,6 +520,14 @@ IMPORTANT: Respond ONLY with valid JSON. No markdown, no explanations, just the 
         return;
       }
 
+      // IMPORTANT: Clean message to sound human (remove dashes, semicolons, etc.)
+      const originalMessage = responseData.message;
+      responseData.message = makeMessageHuman(responseData.message);
+      
+      if (originalMessage !== responseData.message) {
+        console.log(`🧹 Cleaned message: "${originalMessage}" → "${responseData.message}"`);
+      }
+
       // Send SMS response
       console.log(`📱 Sending SMS: "${responseData.message}"`);
       
@@ -292,6 +556,35 @@ IMPORTANT: Respond ONLY with valid JSON. No markdown, no explanations, just the 
       );
 
       console.log(`✅ SMS sent successfully`);
+
+      // Execute actions if any (tasks, appointments, notes)
+      if (responseData.actions && responseData.actions.length > 0) {
+        console.log(`🎬 Processing ${responseData.actions.length} action(s)...`);
+        
+        // Get contact email for appointment booking
+        let contactEmail = null;
+        try {
+          const contactResponse = await axios.get(
+            `https://services.leadconnectorhq.com/contacts/${contact_id}`,
+            {
+              headers: {
+                'Authorization': `Bearer ${GHL_API_KEY}`,
+                'Version': '2021-07-28'
+              }
+            }
+          );
+          contactEmail = contactResponse.data.contact?.email || null;
+          if (contactEmail) {
+            console.log(`📧 Contact email: ${contactEmail}`);
+          } else {
+            console.log(`⚠️ No email on file for contact`);
+          }
+        } catch (error) {
+          console.error('⚠️ Could not fetch contact email:', error.message);
+        }
+        
+        await executeActions(contact_id, contactEmail, responseData.actions);
+      }
 
       // Add intent tag
       if (responseData.tag) {
