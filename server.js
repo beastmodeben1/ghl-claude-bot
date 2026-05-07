@@ -169,7 +169,18 @@ async function getConversationHistory(contact_id) {
       }
     );
 
+    // Debug: Log response structure
+    console.log(`📦 Messages API response keys:`, Object.keys(messagesResponse.data || {}));
+    
     const messages = messagesResponse.data.messages || [];
+    
+    // Log what we got for debugging
+    console.log(`✅ Fetched ${messages.length} messages from conversation`);
+    
+    if (!Array.isArray(messages)) {
+      console.log(`⚠️ Messages is not an array:`, typeof messages);
+      return [];
+    }
     
     // Format messages in chronological order (oldest first)
     const formattedHistory = messages
@@ -179,7 +190,7 @@ async function getConversationHistory(contact_id) {
         return `${direction}: "${msg.body}"`;
       });
 
-    console.log(`✅ Fetched ${formattedHistory.length} messages from history`);
+    console.log(`✅ Formatted ${formattedHistory.length} messages from history`);
     return formattedHistory;
 
   } catch (error) {
