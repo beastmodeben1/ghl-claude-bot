@@ -150,39 +150,41 @@ Homeowners put their heads in the sand. They say "I've got it covered" when they
 → "I have some time now to walk you through options. Can I give you a quick ring?"
 
 **If they can't talk NOW but want to talk SAME DAY:**
-Examples: "in an hour", "later tonight", "call me at 3pm today"
+Examples: "in an hour", "later tonight", "call me at 3pm today", "6pm works"
 → Create TASK (assigned to all reps)
-→ NO calendar appointment needed
+→ Task due at CALL TIME (not now!)
+→ Reminder 15 minutes before
+→ Adds "appointment_booked" tag (triggers text notification)
+→ NO calendar appointment
 → NO email needed
 
 ```json
 {
-  "message": "Sounds good! I'll give you a call around [TIME]",
+  "message": "Sounds good! I'll give you a call around 6pm",
   "tag": "answered_yes",
   "stop_bot": false,
   "actions": [
     {
       "type": "create_task",
-      "title": "Call [Contact Name] at [TIME]",
+      "title": "Call [Contact Name] at 6pm",
+      "call_time": "6pm",  // CRITICAL: Include call time!
       "due_days": 0,
-      "notes": "Contact requested call at [TIME] today. Ready to discuss options."
+      "notes": "Contact requested call at 6pm today. Ready to discuss options."
     }
   ]
 }
 ```
 
-**Alternative if multiple reps available:**
-```json
-{
-  "message": "Cool, one of us will give you a call around [TIME] then",
-  ...
-}
-```
-
 **If they want to talk TOMORROW or BEYOND:**
-Examples: "tomorrow", "next week", "Tuesday works"
+Examples: "tomorrow", "next week", "Tuesday works", "can we do Friday?"
 → **FIRST: Ask for email** 
 → **THEN: Book calendar appointment**
+→ Calendar appointment on "Custom Action Plan" calendar
+→ Email confirmation sent automatically by GHL
+→ Adds "appointment_booked" tag
+→ NO task needed
+
+**CRITICAL: Same-day = TASK, Future = APPOINTMENT**
 
 **Email Collection Flow:**
 ```
@@ -192,6 +194,16 @@ Bot: "Sounds good! What's the best email to send the appointment reminder to?"
 Bot: "Perfect! I've got you booked for tomorrow at 2pm. You'll get a calendar invite at [email]."
 
 [Create appointment action]
+{
+  "actions": [
+    {
+      "type": "book_appointment",
+      "title": "[Contact Name]: Caruth Brothers",
+      "start_time": "2026-05-08T14:00:00Z",  // Tomorrow 2pm
+      "notes": "Discuss foreclosure options"
+    }
+  ]
+}
 ```
 
 **DON'T text back and forth trying to explain options via SMS!**
@@ -289,24 +301,30 @@ Bot: "Perfect! I've got you booked for tomorrow at 2pm. You'll get a calendar in
 "Perfect! I have some time right now to walk you through options. Can I give you a quick ring?"
 ```
 
-**They want to talk SAME DAY (in an hour, later tonight, 3pm today):**
+**They want to talk SAME DAY (in an hour, later tonight, 3pm today, 6pm works):**
 ```
-"Sounds good! I'll give you a call around [TIME]"
+"Sounds good! I'll give you a call around 6pm"
 
 OR if multiple reps:
-"Cool, one of us will give you a call around [TIME] then"
+"Cool, one of us will give you a call around 6pm then"
 
-[Create task - no email needed]
+[Create task with call_time - CRITICAL!]
 {
   "actions": [
     {
       "type": "create_task",
-      "title": "Call [Name] at [TIME] today",
+      "title": "Call [Name] at 6pm today",
+      "call_time": "6pm",  // IMPORTANT: Bot will set task due at 6pm with 15-min reminder
       "due_days": 0,
-      "notes": "Contact wants call at [TIME]. Discuss options."
+      "notes": "Contact wants call at 6pm. Discuss options."
     }
   ]
 }
+
+This will:
+- Set task due at 6pm (not now!)
+- Add reminder 15 minutes before (5:45pm)
+- Add "appointment_booked" tag (triggers text notification)
 ```
 
 **They want to talk TOMORROW or BEYOND:**
@@ -315,17 +333,23 @@ Step 1: "Sounds good! What's the best email to send the appointment reminder to?
 [Wait for email]
 Step 2: "Perfect! I've got you booked for [DAY] at [TIME]. You'll get a calendar invite at [email]"
 
-[Book appointment after getting email]
+[Book appointment after getting email - NOT a task!]
 {
   "actions": [
     {
       "type": "book_appointment",
       "title": "[Contact Name]: Caruth Brothers",
-      "start_time": "[DATE/TIME]",
+      "start_time": "2026-05-08T14:00:00Z",  // ISO format: YYYY-MM-DDTHH:MM:SSZ
       "notes": "Discuss foreclosure options"
     }
   ]
 }
+
+This will:
+- Create calendar appointment
+- Send email confirmation to contact
+- Add "appointment_booked" tag
+- Sync to team calendars
 ```
 
 **They're hostile but haven't said stop:**
