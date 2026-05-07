@@ -160,7 +160,7 @@ async function getConversationHistory(contact_id) {
       {
         params: {
           limit: 20,
-          type: 'SMS'
+          type: 'TYPE_SMS'  // Fixed: GHL API requires TYPE_SMS not SMS
         },
         headers: {
           'Authorization': `Bearer ${GHL_API_KEY}`,
