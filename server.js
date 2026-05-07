@@ -233,8 +233,28 @@ async function shouldRespond(contact_id) {
 
 // Helper: Create GHL Task
 async function createGHLTask(contact_id, action) {
-  const dueDate = new Date();
-  dueDate.setDate(dueDate.getDate() + (action.due_days || 0));
+  // Parse call time from action (format: "3pm", "5:30pm", "in 2 hours", etc.)
+  let dueDate = new Date();
+  
+  if (action.call_time) {
+    // Try to parse time like "3pm", "5:30pm"
+    const timeMatch = action.call_time.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)/i);
+    if (timeMatch) {
+      let hours = parseInt(timeMatch[1]);
+      const minutes = parseInt(timeMatch[2] || '0');
+      const meridiem = timeMatch[3].toLowerCase();
+      
+      if (meridiem === 'pm' && hours !== 12) hours += 12;
+      if (meridiem === 'am' && hours === 12) hours = 0;
+      
+      dueDate.setHours(hours, minutes, 0, 0);
+    }
+  }
+  
+  // If due_days specified, add days
+  if (action.due_days) {
+    dueDate.setDate(dueDate.getDate() + action.due_days);
+  }
   
   try {
     await axios.post(
@@ -243,7 +263,10 @@ async function createGHLTask(contact_id, action) {
         title: action.title,
         body: action.notes || '',
         dueDate: dueDate.toISOString(),
-        completed: false
+        completed: false,
+        // Add reminder 15 minutes before
+        assignedTo: null, // Assigns to all reps
+        reminderTime: new Date(dueDate.getTime() - 15 * 60 * 1000).toISOString() // 15 min before
       },
       {
         headers: {
@@ -253,7 +276,7 @@ async function createGHLTask(contact_id, action) {
         }
       }
     );
-    console.log(`✅ Created task: ${action.title}`);
+    console.log(`✅ Created task: ${action.title} due at ${dueDate.toLocaleString()}`);
     return true;
   } catch (error) {
     console.error('❌ Error creating task:', error.response?.data || error.message);
@@ -331,13 +354,17 @@ async function executeActions(contact_id, contact_email, actions) {
   
   console.log(`🎬 Executing ${actions.length} action(s)...`);
   
+  let appointmentBooked = false;
+  
   for (const action of actions) {
     switch (action.type) {
       case 'create_task':
-        await createGHLTask(contact_id, action);
+        const taskCreated = await createGHLTask(contact_id, action);
+        if (taskCreated) appointmentBooked = true;
         break;
       case 'book_appointment':
-        await bookGHLAppointment(contact_id, contact_email, action);
+        const apptCreated = await bookGHLAppointment(contact_id, contact_email, action);
+        if (apptCreated) appointmentBooked = true;
         break;
       case 'add_note':
         await addGHLNote(contact_id, action.notes);
@@ -348,6 +375,26 @@ async function executeActions(contact_id, contact_email, actions) {
         break;
       default:
         console.log(`⚠️ Unknown action type: ${action.type}`);
+    }
+  }
+  
+  // Add "appointment_booked" tag if task or appointment was created
+  if (appointmentBooked) {
+    try {
+      await axios.post(
+        `https://services.leadconnectorhq.com/contacts/${contact_id}/tags`,
+        { tags: ['appointment_booked'] },
+        {
+          headers: {
+            'Authorization': `Bearer ${GHL_API_KEY}`,
+            'Content-Type': 'application/json',
+            'Version': '2021-07-28'
+          }
+        }
+      );
+      console.log(`✅ Added "appointment_booked" tag`);
+    } catch (error) {
+      console.error('❌ Error adding appointment_booked tag:', error.response?.data || error.message);
     }
   }
 }
