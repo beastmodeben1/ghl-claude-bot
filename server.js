@@ -91,7 +91,8 @@ app.post('/webhook/:clientId', async (req, res) => {
 
   console.log(`From: ${contact_name} (${contact_id})`);
   console.log(`Message: "${message_body}"`);
-
+console.log(`📞 DEBUG - Full webhook payload:`, JSON.stringify(req.body, null, 2));
+  
   // Respond immediately to GHL (prevents timeout)
   res.json({ 
     success: true, 
