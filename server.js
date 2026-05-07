@@ -32,6 +32,52 @@ function getRandomDelay(min, max) {
   return Math.floor(Math.random() * (max - min + 1) + min) * 1000;
 }
 
+// Helper: Get conversation phone number from GHL
+async function getConversationPhone(contact_id) {
+  try {
+    console.log(`🔍 Looking up conversation for contact: ${contact_id}`);
+    
+    // Get conversations for this contact
+    const response = await axios.get(
+      `https://services.leadconnectorhq.com/conversations/search`,
+      {
+        params: {
+          contactId: contact_id
+        },
+        headers: {
+          'Authorization': `Bearer ${GHL_API_KEY}`,
+          'Version': '2021-07-28'
+        }
+      }
+    );
+
+    if (response.data.conversations && response.data.conversations.length > 0) {
+      // Get the most recent conversation
+      const conversation = response.data.conversations[0];
+      
+      // The phone number might be in different fields depending on GHL version
+      const phone = conversation.locationPhone || 
+                   conversation.phone || 
+                   conversation.businessPhone ||
+                   null;
+      
+      if (phone) {
+        console.log(`✅ Found receiving phone: ${phone}`);
+        return phone;
+      } else {
+        console.log(`⚠️ Conversation found but no phone number in data:`, JSON.stringify(conversation, null, 2));
+        return null;
+      }
+    } else {
+      console.log(`⚠️ No conversations found for contact ${contact_id}`);
+      return null;
+    }
+  } catch (error) {
+    console.error('❌ Error getting conversation phone:', error.response?.data || error.message);
+    return null;
+  }
+}
+
 // Helper: Check if should respond
 async function shouldRespond(contact_id) {
   try {
@@ -68,7 +114,7 @@ async function shouldRespond(contact_id) {
 app.get('/', (req, res) => {
   res.json({ 
     status: 'Claude SMS Bot - Running',
-    version: '1.0.1',
+    version: '1.0.2',
     timestamp: new Date().toISOString()
   });
 });
@@ -91,8 +137,8 @@ app.post('/webhook/:clientId', async (req, res) => {
 
   console.log(`From: ${contact_name} (${contact_id})`);
   console.log(`Message: "${message_body}"`);
-console.log(`📞 DEBUG - Full webhook payload:`, JSON.stringify(req.body, null, 2));
-  
+  console.log(`📞 DEBUG - Full webhook payload:`, JSON.stringify(req.body, null, 2));
+
   // Respond immediately to GHL (prevents timeout)
   res.json({ 
     success: true, 
@@ -110,6 +156,15 @@ console.log(`📞 DEBUG - Full webhook payload:`, JSON.stringify(req.body, null,
         return;
       }
 
+      // GET CONVERSATION PHONE NUMBER
+      const conversationPhone = await getConversationPhone(contact_id);
+      
+      if (!conversationPhone) {
+        console.log(`⚠️ Could not determine receiving phone number - using default SMS send`);
+      } else {
+        console.log(`✅ Will reply from: ${conversationPhone}`);
+      }
+
       // RULE: Random delay 10-45 seconds
       const delay = getRandomDelay(RULES.response_delay_min, RULES.response_delay_max);
       console.log(`⏳ Waiting ${delay/1000}s before responding...`);
@@ -117,11 +172,11 @@ console.log(`📞 DEBUG - Full webhook payload:`, JSON.stringify(req.body, null,
 
       console.log(`🤖 Calling Claude API...`);
 
-      // Call Claude API (simplified - no MCP)
+      // Call Claude API
       const claudeResponse = await axios.post(
         'https://api.anthropic.com/v1/messages',
         {
-        model: 'claude-sonnet-4-6',
+          model: 'claude-sonnet-4-6',
           max_tokens: 500,
           system: `You are a pre-foreclosure SMS bot.
 
@@ -211,13 +266,22 @@ IMPORTANT: Respond ONLY with valid JSON. No markdown, no explanations, just the 
 
       // Send SMS response
       console.log(`📱 Sending SMS: "${responseData.message}"`);
+      
+      const smsPayload = {
+        type: 'SMS',
+        contactId: contact_id,
+        message: responseData.message
+      };
+
+      // Add 'from' field if we found the conversation phone
+      if (conversationPhone) {
+        smsPayload.from = conversationPhone;
+        console.log(`📞 Replying from: ${conversationPhone}`);
+      }
+
       await axios.post(
         'https://services.leadconnectorhq.com/conversations/messages',
-        {
-          type: 'SMS',
-          contactId: contact_id,
-          message: responseData.message
-        },
+        smsPayload,
         {
           headers: {
             'Authorization': `Bearer ${GHL_API_KEY}`,
