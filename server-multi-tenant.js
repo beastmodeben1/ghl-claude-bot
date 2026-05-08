@@ -483,7 +483,7 @@ try {
       await axios.put(
         `https://services.leadconnectorhq.com/contacts/${contact_id}`,
         {
-          customFields: {
+          customField: {
             last_bot_message: new Date().toISOString()
           }
         },
