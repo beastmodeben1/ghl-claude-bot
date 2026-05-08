@@ -413,7 +413,6 @@ Generate your response following all rules in the knowledge base.`;
 
     console.log(`📝 Response content: '''${responseText}'''`);
     
-   ```javascript
 let responseData;
 try {
   // Extract JSON block if present
@@ -438,7 +437,6 @@ try {
     stop_bot: false
   };
 }
-```
 
     console.log(`📋 Parsed response:`, JSON.stringify(responseData, null, 2));
     
