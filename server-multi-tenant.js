@@ -413,18 +413,32 @@ Generate your response following all rules in the knowledge base.`;
 
     console.log(`📝 Response content: '''${responseText}'''`);
     
-    let responseData;
-    try {
-      const cleanedText = responseText.replace(/```json\n?|\n?```/g, '').trim();
-      responseData = JSON.parse(cleanedText);
-    } catch (error) {
-      console.log(`⚠️ Not JSON, treating as plain text`);
-      responseData = {
-        message: responseText,
-        tag: 'neutral_response',
-        stop_bot: false
-      };
-    }
+   ```javascript
+let responseData;
+try {
+  // Extract JSON block if present
+  const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/);
+  let jsonText;
+  
+  if (jsonMatch) {
+    jsonText = jsonMatch[1].trim();
+  } else {
+    // Try to find JSON object directly
+    const objectMatch = responseText.match(/\{[\s\S]*\}/);
+    jsonText = objectMatch ? objectMatch[0] : responseText;
+  }
+  
+  responseData = JSON.parse(jsonText);
+  console.log(`✅ Parsed JSON successfully`);
+} catch (error) {
+  console.log(`⚠️ Not valid JSON, treating as plain text`);
+  responseData = {
+    message: responseText.replace(/```json|```/g, '').trim(),
+    tag: 'neutral_response',
+    stop_bot: false
+  };
+}
+```
 
     console.log(`📋 Parsed response:`, JSON.stringify(responseData, null, 2));
     
