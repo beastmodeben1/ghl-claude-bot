@@ -161,13 +161,25 @@ async function getConversationHistory(contact_id, GHL_API_KEY) {
       }
     );
 
-    const messages = messagesResponse.data.messages || [];
+    // Handle different response formats from GHL
+    let messages = [];
     
-    if (!Array.isArray(messages)) {
-      console.log(`⚠️ Messages is not an array:`, typeof messages);
+    if (messagesResponse.data.messages) {
+      if (Array.isArray(messagesResponse.data.messages)) {
+        messages = messagesResponse.data.messages;
+      } else if (typeof messagesResponse.data.messages === 'object') {
+        // Messages came back as object - convert to array
+        messages = Object.values(messagesResponse.data.messages);
+      }
+    }
+    
+    console.log(`✅ Found ${messages.length} messages`);
+    
+    if (messages.length === 0) {
       return [];
     }
     
+    // Format messages (oldest first)
     const formattedHistory = messages
       .reverse()
       .map(msg => {
@@ -177,6 +189,7 @@ async function getConversationHistory(contact_id, GHL_API_KEY) {
 
     console.log(`✅ Formatted ${formattedHistory.length} messages from history`);
     return formattedHistory;
+    
   } catch (error) {
     console.error(`❌ Error fetching conversation history:`, error.message);
     return [];
