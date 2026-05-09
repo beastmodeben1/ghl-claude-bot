@@ -184,12 +184,12 @@ async function getConversationHistory(contact_id, GHL_API_KEY) {
     console.log(`✅ Found conversation ID: ${conversationId}`);
 
     // Get messages (last 20)
-    const messagesResponse = await axios.get(
-      `https://services.leadconnectorhq.com/conversations/${conversationId}/messages`,
-      {
-        params: {
-          count: 20,
-          type: 'TYPE_SMS'
+  const messagesResponse = await axios.get(
+  `https://services.leadconnectorhq.com/contacts/${contact_id}/conversations/messages`,
+  {
+    params: {
+      limit: 20,
+      type: 'SMS'
         },
         headers: {
           'Authorization': `Bearer ${GHL_API_KEY}`,
