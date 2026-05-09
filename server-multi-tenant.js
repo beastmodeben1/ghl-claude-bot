@@ -197,8 +197,13 @@ async function getConversationHistory(contact_id, GHL_API_KEY) {
         }
       }
     );
-
-  // Handle GHL returning object instead of array
+    
+ // ADD THIS DEBUGGING
+    console.log(`🔍 DEBUG: Raw API response keys:`, Object.keys(messagesResponse.data));
+    console.log(`🔍 DEBUG: Total messages in response:`, messagesResponse.data.messages ? (Array.isArray(messagesResponse.data.messages) ? messagesResponse.data.messages.length : Object.keys(messagesResponse.data.messages).length) : 0);
+    console.log(`🔍 DEBUG: Response has pagination?`, messagesResponse.data.meta || messagesResponse.data.pagination || 'No pagination info');
+  
+    // Handle GHL returning object instead of array
     let messages = [];
     
     if (messagesResponse.data.messages) {
