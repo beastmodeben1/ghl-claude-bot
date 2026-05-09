@@ -395,6 +395,11 @@ ${conversationHistory.length > 0 ? conversationHistory.join('\n') : 'No previous
 CURRENT MESSAGE:
 Contact: "${message_body}"
 
+CRITICAL: Before responding, check if you need to create actions (tasks/appointments)!
+- If someone wants to schedule a call and you have time/email → Include "actions" array
+- Same-day = create_task, Future = book_appointment
+- Use EXACT JSON format from knowledge base
+
 Generate your response following all rules in the knowledge base.`;
 
     const claudeResponse = await axios.post(
