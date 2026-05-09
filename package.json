@@ -1,9 +1,9 @@
 {
   "name": "ghl-claude-bot",
   "version": "1.0.0",
-  "main": "server.js",
+  "main": "server-multi-tenant.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server-multi-tenant.js"
   },
   "dependencies": {
     "express": "^4.18.2",
