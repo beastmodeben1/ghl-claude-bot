@@ -16,6 +16,7 @@ const CLIENTS = {
   'caruth': {
     name: 'Caruth Brothers LLC',
     ghl_api_key: process.env.CARUTH_GHL_API_KEY,
+    location_id: 'OuIxba3Lr0bnZvndMh3Z'
     knowledge_base_file: './knowledge-base-caruth.txt',
     bot_name: 'Peter',
     company_name: 'Caruth Brothers',
@@ -296,7 +297,7 @@ async function createGHLTask(contact_id, action, GHL_API_KEY) {
 }
 
 // Helper: Book GHL Appointment
-async function bookGHLAppointment(contact_id, contact_email, action, GHL_API_KEY) {
+async function bookGHLAppointment(contact_id, contact_email, action, client, GHL_API_KEY) {
   if (!contact_email) {
     console.log('⚠️ No email - cannot book appointment');
     return false;
@@ -312,6 +313,7 @@ async function bookGHLAppointment(contact_id, contact_email, action, GHL_API_KEY
     await axios.post(
       'https://services.leadconnectorhq.com/calendars/events/appointments',
       {
+        locationid: client.location_id
         calendarId: CALENDAR_ID,
         contactId: contact_id,
         startTime: startTime.toISOString(),
