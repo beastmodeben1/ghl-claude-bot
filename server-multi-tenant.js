@@ -158,85 +158,63 @@ async function getConversationPhone(contact_id, GHL_API_KEY) {
   }
 }
 
-// Helper: Get conversation history (FULL VERSION - 20 messages)
+// Helper: Get conversation history via Streamlined API (gets ALL messages!)
 async function getConversationHistory(contact_id, GHL_API_KEY) {
   try {
-    console.log(`📜 Fetching conversation history for contact: ${contact_id}`);
+    console.log(`📜 Fetching conversation history via Streamlined for: ${contact_id}`);
     
-    // Get conversation ID
-    const convResponse = await axios.get(
-      'https://services.leadconnectorhq.com/conversations/search',
-      {
-        params: { contactId: contact_id },
-        headers: {
-          'Authorization': `Bearer ${GHL_API_KEY}`,
-          'Version': '2021-07-28'
-        }
-      }
-    );
-
-    if (!convResponse.data.conversations || convResponse.data.conversations.length === 0) {
-      console.log(`⚠️ No conversation found for contact`);
+    const STREAMLINED_API_KEY = process.env.STREAMLINED_API_KEY;
+    
+    if (!STREAMLINED_API_KEY) {
+      console.log(`⚠️ No Streamlined API key - falling back to empty history`);
       return [];
     }
 
-    const conversationId = convResponse.data.conversations[0].id;
-    console.log(`✅ Found conversation ID: ${conversationId}`);
+    const sql = `
+      SELECT direction, body, timestamp
+      FROM messages
+      WHERE contact_id = '${contact_id}'
+      ORDER BY timestamp ASC
+      LIMIT 20
+    `;
 
-    // Get messages (last 20)
-  const messagesResponse = await axios.get(
-  `https://services.leadconnectorhq.com/contacts/${contact_id}/conversations/messages`,
-  {
-    params: {
-      limit: 20,
-      type: 'SMS'
-        },
+    const response = await axios.post(
+      'https://gateway.streamlined.so/query/api/execute-sql',
+      { sql },
+      {
         headers: {
-          'Authorization': `Bearer ${GHL_API_KEY}`,
-          'Version': '2021-07-28'
+          'Content-Type': 'application/json',
+          'X-API-Key': STREAMLINED_API_KEY
         }
       }
     );
-    
- // ADD THIS DEBUGGING
-    console.log(`🔍 DEBUG: Raw API response keys:`, Object.keys(messagesResponse.data));
-    console.log(`🔍 DEBUG: Total messages in response:`, messagesResponse.data.messages ? (Array.isArray(messagesResponse.data.messages) ? messagesResponse.data.messages.length : Object.keys(messagesResponse.data.messages).length) : 0);
-    console.log(`🔍 DEBUG: Response has pagination?`, messagesResponse.data.meta || messagesResponse.data.pagination || 'No pagination info');
-  
-    // Handle GHL returning object instead of array
-    let messages = [];
-    
-    if (messagesResponse.data.messages) {
-      if (Array.isArray(messagesResponse.data.messages)) {
-        messages = messagesResponse.data.messages;
-      } else if (typeof messagesResponse.data.messages === 'object') {
-        messages = Object.values(messagesResponse.data.messages);
-      }
+
+    if (response.data.status === 'error') {
+      console.error(`❌ Streamlined API error:`, response.data.error);
+      return [];
     }
-    
-    console.log(`✅ Fetched ${messages.length} messages from conversation`);
-    
+
+    const messages = response.data.result || [];
+    console.log(`✅ Fetched ${messages.length} messages from Streamlined`);
+
     if (messages.length === 0) {
       return [];
     }
-    
-    // Format messages (oldest first)
-    const formattedHistory = messages
-      .reverse()
-      .map(msg => {
-        const direction = msg.direction === 'inbound' ? 'Contact' : 'You';
-        return `${direction}: "${msg.body}"`;
-      });
+
+    // Format messages
+    const formattedHistory = messages.map(msg => {
+      const direction = msg.direction === 'inbound' ? 'Contact' : 'You';
+      return `${direction}: "${msg.body}"`;
+    });
 
     console.log(`✅ Formatted ${formattedHistory.length} messages from history`);
     return formattedHistory;
 
   } catch (error) {
-    console.error('❌ Error fetching conversation history:', error.message);
+    console.error('❌ Error fetching from Streamlined:', error.message);
     return [];
   }
 }
-
 // Helper: Check if should respond
 async function shouldRespond(contact_id, client, GHL_API_KEY) {
   try {
