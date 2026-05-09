@@ -188,7 +188,7 @@ async function getConversationHistory(contact_id, GHL_API_KEY) {
       `https://services.leadconnectorhq.com/conversations/${conversationId}/messages`,
       {
         params: {
-          limit: 20,
+          count: 20,
           type: 'TYPE_SMS'
         },
         headers: {
