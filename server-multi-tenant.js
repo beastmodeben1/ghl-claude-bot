@@ -317,7 +317,7 @@ async function bookGHLAppointment(contact_id, contact_email, action, client, GHL
       {
         locationId: client.location_id,
         calendarId: CALENDAR_ID,
-        contactId: contact_Id,
+        contactId: contact_id,
         startTime: startTime.toISOString(),
         endTime: endTime.toISOString(),
         title: action.title || 'Call',
