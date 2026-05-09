@@ -198,15 +198,20 @@ async function getConversationHistory(contact_id, GHL_API_KEY) {
       }
     );
 
-    // Debug response structure
-    console.log(`📦 Messages API response keys:`, Object.keys(messagesResponse.data || {}));
+  // Handle GHL returning object instead of array
+    let messages = [];
     
-    const messages = messagesResponse.data.messages || [];
+    if (messagesResponse.data.messages) {
+      if (Array.isArray(messagesResponse.data.messages)) {
+        messages = messagesResponse.data.messages;
+      } else if (typeof messagesResponse.data.messages === 'object') {
+        messages = Object.values(messagesResponse.data.messages);
+      }
+    }
     
     console.log(`✅ Fetched ${messages.length} messages from conversation`);
     
-    if (!Array.isArray(messages)) {
-      console.log(`⚠️ Messages is not an array:`, typeof messages);
+    if (messages.length === 0) {
       return [];
     }
     
