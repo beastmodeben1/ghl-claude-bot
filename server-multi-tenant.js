@@ -16,7 +16,7 @@ const CLIENTS = {
   'caruth': {
     name: 'Caruth Brothers LLC',
     ghl_api_key: process.env.CARUTH_GHL_API_KEY,
-    location_id: 'OuIxba3Lr0bnZvndMh3Z',
+    location_Id: 'OuIxba3Lr0bnZvndMh3Z',
     knowledge_base_file: './knowledge-base-caruth.txt',
     bot_name: 'Peter',
     company_name: 'Caruth Brothers',
@@ -28,7 +28,7 @@ const CLIENTS = {
   'client1': {
     name: 'Client 1 Name',
     ghl_api_key: process.env.CLIENT1_GHL_API_KEY,
-    location_id: null,
+    location_Id: null,
     knowledge_base_file: './knowledge-base-master.txt',
     bot_name: 'Sarah',
     company_name: 'ABC Realty',
@@ -40,7 +40,7 @@ const CLIENTS = {
   'client2': {
     name: 'Client 2 Name',
     ghl_api_key: process.env.CLIENT2_GHL_API_KEY,
-    location_id: null,
+    location_Id: null,
     knowledge_base_file: './knowledge-base-master.txt',
     bot_name: 'Mike',
     company_name: 'XYZ Investments',
@@ -315,9 +315,9 @@ async function bookGHLAppointment(contact_id, contact_email, action, client, GHL
     await axios.post(
       'https://services.leadconnectorhq.com/calendars/events/appointments',
       {
-        locationid: client.location_id,
+        locationId: client.location_id,
         calendarId: CALENDAR_ID,
-        contactId: contact_id,
+        contactId: contact_Id,
         startTime: startTime.toISOString(),
         endTime: endTime.toISOString(),
         title: action.title || 'Call',
