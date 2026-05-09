@@ -16,7 +16,7 @@ const CLIENTS = {
   'caruth': {
     name: 'Caruth Brothers LLC',
     ghl_api_key: process.env.CARUTH_GHL_API_KEY,
-    location_id: 'OuIxba3Lr0bnZvndMh3Z'
+    location_id: 'OuIxba3Lr0bnZvndMh3Z',
     knowledge_base_file: './knowledge-base-caruth.txt',
     bot_name: 'Peter',
     company_name: 'Caruth Brothers',
