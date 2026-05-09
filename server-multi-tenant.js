@@ -361,7 +361,7 @@ async function addGHLNote(contact_id, notes, GHL_API_KEY) {
 }
 
 // Helper: Execute Actions
-async function executeActions(contact_id, contact_email, actions, GHL_API_KEY) {
+async function executeActions(contact_id, contact_email, actions, client, GHL_API_KEY) {
   if (!actions || actions.length === 0) return;
   
   console.log(`🎬 Executing ${actions.length} action(s)...`);
@@ -375,7 +375,7 @@ async function executeActions(contact_id, contact_email, actions, GHL_API_KEY) {
         if (taskCreated) appointmentBooked = true;
         break;
       case 'book_appointment':
-        const apptCreated = await bookGHLAppointment(contact_id, contact_email, action, GHL_API_KEY);
+        const apptCreated = await bookGHLAppointment(contact_id, contact_email, action, client, GHL_API_KEY);
         if (apptCreated) appointmentBooked = true;
         break;
       case 'add_note':
@@ -634,7 +634,7 @@ IMPORTANT: Respond ONLY with valid JSON. No markdown, no explanations, just the 
           console.error('⚠️ Could not fetch contact email:', error.message);
         }
         
-        await executeActions(contact_id, contactEmail, responseData.actions, GHL_API_KEY);
+        await executeActions(contact_id, contactEmail, responseData.actions, client, GHL_API_KEY);
       }
 
       // Add intent tag
