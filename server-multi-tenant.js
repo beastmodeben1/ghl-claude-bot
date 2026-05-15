@@ -315,7 +315,7 @@ async function bookGHLAppointment(contact_id, contact_email, action, client, GHL
     await axios.post(
       'https://services.leadconnectorhq.com/calendars/events/appointments',
       {
-        locationId: client.location_id,
+        accountId: client.location_id,
         calendarId: CALENDAR_ID,
         contactId: contact_id,
         startTime: startTime.toISOString(),
