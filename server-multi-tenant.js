@@ -300,6 +300,8 @@ async function createGHLTask(contact_id, action, GHL_API_KEY) {
 
 // Helper: Book GHL Appointment
 async function bookGHLAppointment(contact_id, contact_email, action, client, GHL_API_KEY) {
+  console.log('🔍 CLIENT CHECK:', client ? `YES - location_id: ${client.location_id}` : 'NO CLIENT!');
+  
   if (!contact_email) {
     console.log('⚠️ No email - cannot book appointment');
     return false;
