@@ -303,62 +303,6 @@ async function createGHLTask(contact_id, action, client, GHL_API_KEY) {
   }
 }
 
-// Helper: Book GHL Appointment
-async function bookGHLAppointment(contact_id, contact_email, action, client, GHL_API_KEY) {
-  console.log('🔍 APPOINTMENT: Checking requirements...');
-  
-  if (!contact_email) {
-    console.log('⚠️ No email - cannot book appointment (bot should ask for email first)');
-    return false;
-  }
-  
-  const CALENDAR_ID = 'tpf55lDwQzdwFZ9IExaB';
-  
-  // Parse start_time - handle both ISO and relative formats
-  let startTime;
-  
-  if (action.start_time) {
-    // Try parsing as ISO first
-    startTime = new Date(action.start_time);
-    
-    // If invalid, default to tomorrow 2pm
-    if (isNaN(startTime.getTime())) {
-      console.log(`⚠️ Invalid start_time format: "${action.start_time}" - using tomorrow 2pm`);
-      startTime = new Date();
-      startTime.setDate(startTime.getDate() + 1);
-      startTime.setHours(14, 0, 0, 0);
-    }
-  } else {
-    // No time provided - default to tomorrow 2pm
-    startTime = new Date();
-    startTime.setDate(startTime.getDate() + 1);
-    startTime.setHours(14, 0, 0, 0);
-  }
-  
-  try {
-    // Use v1 booking API
-    await axios.post(
-      'https://rest.gohighlevel.com/v1/appointments/',
-      {
-        email: contact_email,
-        selectedSlot: startTime.toISOString(),
-        selectedTimezone: client.timezone,
-        calendarId: CALENDAR_ID
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${GHL_API_KEY}`
-        }
-      }
-    );
-    console.log(`✅ Booked appointment for ${startTime.toLocaleString()} (${client.timezone})`);
-    return true;
-  } catch (error) {
-    console.error('❌ Error booking appointment:', error.response?.data || error.message);
-    return false;
-  }
-}
-
 // Helper: Add GHL Note
 async function addGHLNote(contact_id, notes, GHL_API_KEY) {
   try {
@@ -394,10 +338,6 @@ async function executeActions(contact_id, contact_email, actions, client, GHL_AP
       case 'create_task':
         const taskCreated = await createGHLTask(contact_id, action, client, GHL_API_KEY);
         if (taskCreated) appointmentBooked = true;
-        break;
-      case 'book_appointment':
-        const apptCreated = await bookGHLAppointment(contact_id, contact_email, action, client, GHL_API_KEY);
-        if (apptCreated) appointmentBooked = true;
         break;
       case 'add_note':
         await addGHLNote(contact_id, action.notes, GHL_API_KEY);
