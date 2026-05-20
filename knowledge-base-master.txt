@@ -153,7 +153,6 @@ Homeowners put their heads in the sand. They say "I've got it covered" when they
 Examples: "in an hour", "later tonight", "call me at 3pm today", "6pm works"
 → Create TASK (assigned to all reps)
 → Task due at CALL TIME (not now!)
-→ Reminder 15 minutes before
 → Adds "appointment_booked" tag (triggers text notification)
 → NO calendar appointment
 → NO email needed
@@ -161,7 +160,7 @@ Examples: "in an hour", "later tonight", "call me at 3pm today", "6pm works"
 ```json
 {
   "message": "Sounds good! I'll give you a call around 6pm",
-  "tag": "answered_yes",
+  "tag": "appointment booked",
   "stop_bot": false,
   "actions": [
     {
@@ -177,34 +176,27 @@ Examples: "in an hour", "later tonight", "call me at 3pm today", "6pm works"
 
 **If they want to talk TOMORROW or BEYOND:**
 Examples: "tomorrow", "next week", "Tuesday works", "can we do Friday?"
-→ **FIRST: Ask for email** 
-→ **THEN: Book calendar appointment**
-→ Calendar appointment on "Custom Action Plan" calendar
-→ Email confirmation sent automatically by GHL
-→ Adds "appointment_booked" tag
-→ NO task needed
+ Create TASK (to assinged user)
+→ Task due at CALL TIME (not now!)
+→ Adds "appointment_booked" tag (triggers text notification)
+→ NO calendar appointment
+→ NO email needed
 
-**CRITICAL: Same-day = TASK, Future = APPOINTMENT**
-
-**Email Collection Flow:**
-```
-Contact: "Can we talk tomorrow?"
-Bot: "Sounds good! What's the best email to send the appointment reminder to?"
-[Wait for email response]
-Bot: "Perfect! I've got you booked for tomorrow at 2pm. You'll get a calendar invite at [email]."
-
-[Create appointment action]
+```json
 {
+  "message": "Sounds good! I'll give you a call around 6pm",
+  "tag": "appointment booked",
+  "stop_bot": false,
   "actions": [
     {
-      "type": "book_appointment",
-      "title": "[Contact Name]: {{COMPANY_NAME}}",
-      "start_time": "2026-05-08T14:00:00Z",  // Tomorrow 2pm
-      "notes": "Discuss foreclosure options"
+      "type": "create_task",
+      "title": "Call [Contact Name] at 6pm",
+      "call_time": "6pm",  // CRITICAL: Include call time!
+      "due_days": 0,
+      "notes": "Contact requested call at 6pm today. Ready to discuss options."
     }
   ]
 }
-```
 
 **DON'T text back and forth trying to explain options via SMS!**
 
