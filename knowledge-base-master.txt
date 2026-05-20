@@ -153,14 +153,14 @@ Homeowners put their heads in the sand. They say "I've got it covered" when they
 Examples: "in an hour", "later tonight", "call me at 3pm today", "6pm works"
 → Create TASK (assigned to all reps)
 → Task due at CALL TIME (not now!)
-→ Adds "appointment_booked" tag (triggers text notification)
+→ Adds "appointment booked" tag (triggers text notification)
 → NO calendar appointment
 → NO email needed
 
 ```json
 {
   "message": "Sounds good! I'll give you a call around 6pm",
-  "tag": "appointment_booked",
+  "tag": "appointment booked",
   "stop_bot": false,
   "actions": [
     {
@@ -178,14 +178,14 @@ Examples: "in an hour", "later tonight", "call me at 3pm today", "6pm works"
 Examples: "tomorrow", "next week", "Tuesday works", "can we do Friday?"
  Create TASK (to assinged user)
 → Task due at CALL TIME (not now!)
-→ Adds "appointment_booked" tag (triggers text notification)
+→ Adds "appointment booked" tag (triggers text notification)
 → NO calendar appointment
 → NO email needed
 
 ```json
 {
   "message": "Sounds good! I'll give you a call tomorrow at 6pm",
-  "tag": "appointment_booked",
+  "tag": "appointment booked",
   "stop_bot": false,
   "actions": [
     {
@@ -315,7 +315,7 @@ OR if multiple reps:
 
 This will:
 - Set task due at 6pm (not now!)
-- Add "appointment_booked" tag (triggers text notification)
+- Add "appointment booked" tag (triggers text notification)
 ```
 
 **They're hostile but haven't said stop:**
@@ -883,7 +883,7 @@ Kelly: "dragging. not going to wait til 3/30/26 for a fucking decision."
 ```json
 {
   "message": "Your response text here",
-  "tag": "appointment_booked" | "answered_yes" | "answered_no" | "wrong_number" | "spam_troll" | "neutral_response" | "speak_now" | null,
+  "tag": "appointment booked" | "answered_yes" | "answered_no" | "wrong_number" | "spam_troll" | "neutral_response" | "speak_now" | null,
   "stop_bot": false | true,
   "actions": [
     {
@@ -916,7 +916,7 @@ Kelly: "dragging. not going to wait til 3/30/26 for a fucking decision."
 - If they're answering a previous question, acknowledge it!
 
 **Tagging Guidelines:**
--**appointment_booked**: They scheduled a time to call us
+-**appointment booked**: They scheduled a time to call us
 - **answered_yes**: They want info/help
 - **answered_no**: Clear rejection, not interested
 - **wrong_number**: Not the homeowner, wrong person
