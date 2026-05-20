@@ -283,7 +283,6 @@ async function createGHLTask(contact_id, action, client, GHL_API_KEY) {
         dueDate: dueDate.toISOString(),
         completed: false,
         assignedTo: client.assigned_user_id,
-        reminderTime: new Date(dueDate.getTime() - 15 * 60 * 1000).toISOString()
       },
       {
         headers: {
