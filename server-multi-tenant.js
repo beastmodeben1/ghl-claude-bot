@@ -16,19 +16,19 @@ const CLIENTS = {
   'caruth': {
     name: 'Caruth Brothers LLC',
     ghl_api_key: process.env.CARUTH_GHL_API_KEY,
-    location_Id: 'OuIxba3Lr0bnZvndMh3Z',
-    knowledge_base_file: './knowledge-base-caruth.txt',
+    location_id: 'OuIxba3Lr0bnZvndMh3Z',
+    knowledge_base_file: './knowledge-base-master.txt',
     bot_name: 'Peter',
     company_name: 'Caruth Brothers',
     max_messages_per_day: 6,
     timezone: 'America/Chicago',
-    response_delay: { min: 5, max: 20 },
+    response_delay: { min: 9, max: 20 },
     stop_tags: ['stop_bot', 'dnd', 'manual_takeover', 'do_not_contact']
   },
   'client1': {
     name: 'Client 1 Name',
     ghl_api_key: process.env.CLIENT1_GHL_API_KEY,
-    location_Id: null,
+    location_id: null,
     knowledge_base_file: './knowledge-base-master.txt',
     bot_name: 'Sarah',
     company_name: 'ABC Realty',
@@ -40,7 +40,7 @@ const CLIENTS = {
   'client2': {
     name: 'Client 2 Name',
     ghl_api_key: process.env.CLIENT2_GHL_API_KEY,
-    location_Id: null,
+    location_id: null,
     knowledge_base_file: './knowledge-base-master.txt',
     bot_name: 'Mike',
     company_name: 'XYZ Investments',
