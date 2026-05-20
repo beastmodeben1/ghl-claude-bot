@@ -256,6 +256,7 @@ async function shouldRespond(contact_id, client, GHL_API_KEY) {
 async function createGHLTask(contact_id, action, client, GHL_API_KEY) {
   let dueDate = new Date();
   
+  // Parse call_time if provided
   if (action.call_time) {
     const timeMatch = action.call_time.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)/i);
     if (timeMatch) {
@@ -270,6 +271,7 @@ async function createGHLTask(contact_id, action, client, GHL_API_KEY) {
     }
   }
   
+  // Add due_days if provided
   if (action.due_days) {
     dueDate.setDate(dueDate.getDate() + action.due_days);
   }
@@ -282,7 +284,8 @@ async function createGHLTask(contact_id, action, client, GHL_API_KEY) {
         body: action.notes || '',
         dueDate: dueDate.toISOString(),
         completed: false,
-        assignedTo: client.assigned_user_id,
+        assignedTo: client.assigned_user_id
+        // Removed reminderTime - GHL doesn't support it
       },
       {
         headers: {
@@ -302,25 +305,44 @@ async function createGHLTask(contact_id, action, client, GHL_API_KEY) {
 
 // Helper: Book GHL Appointment
 async function bookGHLAppointment(contact_id, contact_email, action, client, GHL_API_KEY) {
-  console.log('🔍 APPOINTMENT: Checking email...');
+  console.log('🔍 APPOINTMENT: Checking requirements...');
   
   if (!contact_email) {
-    console.log('⚠️ No email - skipping appointment (will ask user for email)');
+    console.log('⚠️ No email - cannot book appointment (bot should ask for email first)');
     return false;
   }
   
   const CALENDAR_ID = 'tpf55lDwQzdwFZ9IExaB';
-  const startTime = action.start_time 
-    ? new Date(action.start_time) 
-    : new Date(Date.now() + 24 * 60 * 60 * 1000);
+  
+  // Parse start_time - handle both ISO and relative formats
+  let startTime;
+  
+  if (action.start_time) {
+    // Try parsing as ISO first
+    startTime = new Date(action.start_time);
+    
+    // If invalid, default to tomorrow 2pm
+    if (isNaN(startTime.getTime())) {
+      console.log(`⚠️ Invalid start_time format: "${action.start_time}" - using tomorrow 2pm`);
+      startTime = new Date();
+      startTime.setDate(startTime.getDate() + 1);
+      startTime.setHours(14, 0, 0, 0);
+    }
+  } else {
+    // No time provided - default to tomorrow 2pm
+    startTime = new Date();
+    startTime.setDate(startTime.getDate() + 1);
+    startTime.setHours(14, 0, 0, 0);
+  }
   
   try {
+    // Use v1 booking API
     await axios.post(
       'https://rest.gohighlevel.com/v1/appointments/',
       {
         email: contact_email,
         selectedSlot: startTime.toISOString(),
-        selectedTimezone: 'America/Chicago',
+        selectedTimezone: client.timezone,
         calendarId: CALENDAR_ID
       },
       {
@@ -329,7 +351,7 @@ async function bookGHLAppointment(contact_id, contact_email, action, client, GHL
         }
       }
     );
-    console.log(`✅ Booked appointment via v1 API`);
+    console.log(`✅ Booked appointment for ${startTime.toLocaleString()} (${client.timezone})`);
     return true;
   } catch (error) {
     console.error('❌ Error booking appointment:', error.response?.data || error.message);
