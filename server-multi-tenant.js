@@ -302,10 +302,10 @@ async function createGHLTask(contact_id, action, client, GHL_API_KEY) {
 
 // Helper: Book GHL Appointment
 async function bookGHLAppointment(contact_id, contact_email, action, client, GHL_API_KEY) {
-  console.log('🔍 CLIENT CHECK:', client ? `YES - location_id: ${client.location_id}` : 'NO CLIENT!');
+  console.log('🔍 APPOINTMENT: Checking email...');
   
   if (!contact_email) {
-    console.log('⚠️ No email - cannot book appointment');
+    console.log('⚠️ No email - skipping appointment (will ask user for email)');
     return false;
   }
   
@@ -313,30 +313,23 @@ async function bookGHLAppointment(contact_id, contact_email, action, client, GHL
   const startTime = action.start_time 
     ? new Date(action.start_time) 
     : new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
   
   try {
-   await axios.post(
-  'https://services.leadconnectorhq.com/calendars/events/appointments',
-  {
-    calendarId: CALENDAR_ID,
-    contactId: contact_id,
-    startTime: startTime.toISOString(),
-    endTime: endTime.toISOString(),
-    title: action.title || 'Call',
-    appointmentStatus: 'confirmed',
-    notes: action.notes || ''
-  },
-  {
-    headers: {
-      'Authorization': `Bearer ${GHL_API_KEY}`,
-      'Content-Type': 'application/json',
-      'Version': '2021-07-28',
-      'locationId': client.location_id 
-    }
-  }
-);
-    console.log(`✅ Booked appointment: ${action.title}`);
+    await axios.post(
+      'https://rest.gohighlevel.com/v1/appointments/',
+      {
+        email: contact_email,
+        selectedSlot: startTime.toISOString(),
+        selectedTimezone: 'America/Chicago',
+        calendarId: CALENDAR_ID
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${GHL_API_KEY}`
+        }
+      }
+    );
+    console.log(`✅ Booked appointment via v1 API`);
     return true;
   } catch (error) {
     console.error('❌ Error booking appointment:', error.response?.data || error.message);
