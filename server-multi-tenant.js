@@ -316,25 +316,26 @@ async function bookGHLAppointment(contact_id, contact_email, action, client, GHL
   const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
   
   try {
-    await axios.post(
-      `https://services.leadconnectorhq.com/calendars/events/appointments?locationId=${client.location_id}`,
-      {
-        calendarId: CALENDAR_ID,
-        contactId: contact_id,
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
-        title: action.title || 'Call',
-        appointmentStatus: 'confirmed',
-        notes: action.notes || ''
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${GHL_API_KEY}`,
-          'Content-Type': 'application/json',
-          'Version': '2021-07-28'
-        }
-      }
-    );
+   await axios.post(
+  'https://services.leadconnectorhq.com/calendars/events/appointments',
+  {
+    calendarId: CALENDAR_ID,
+    contactId: contact_id,
+    startTime: startTime.toISOString(),
+    endTime: endTime.toISOString(),
+    title: action.title || 'Call',
+    appointmentStatus: 'confirmed',
+    notes: action.notes || ''
+  },
+  {
+    headers: {
+      'Authorization': `Bearer ${GHL_API_KEY}`,
+      'Content-Type': 'application/json',
+      'Version': '2021-07-28',
+      'locationId': client.location_id 
+    }
+  }
+);
     console.log(`✅ Booked appointment: ${action.title}`);
     return true;
   } catch (error) {
