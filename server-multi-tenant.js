@@ -347,12 +347,12 @@ async function executeActions(contact_id, contact_email, actions, client, GHL_AP
     }
   }
   
-  // Add appointment_booked tag if task or appointment was created
+  // Add appointment booked tag if task or appointment was created
   if (appointmentBooked) {
     try {
       await axios.post(
         `https://services.leadconnectorhq.com/contacts/${contact_id}/tags`,
-        { tags: ['appointment_booked'] },
+        { tags: ['appointment booked'] },
         {
           headers: {
             'Authorization': `Bearer ${GHL_API_KEY}`,
@@ -361,9 +361,9 @@ async function executeActions(contact_id, contact_email, actions, client, GHL_AP
           }
         }
       );
-      console.log(`✅ Added "appointment_booked" tag`);
+      console.log(`✅ Added "appointment booked" tag`);
     } catch (error) {
-      console.error('❌ Error adding appointment_booked tag:', error.message);
+      console.error('❌ Error adding appointment booked tag:', error.message);
     }
   }
 }
