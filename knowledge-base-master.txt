@@ -160,7 +160,7 @@ Examples: "in an hour", "later tonight", "call me at 3pm today", "6pm works"
 ```json
 {
   "message": "Sounds good! I'll give you a call around 6pm",
-  "tag": "appointment booked",
+  "tag": "appointment_booked",
   "stop_bot": false,
   "actions": [
     {
@@ -185,7 +185,7 @@ Examples: "tomorrow", "next week", "Tuesday works", "can we do Friday?"
 ```json
 {
   "message": "Sounds good! I'll give you a call around 6pm",
-  "tag": "appointment booked",
+  "tag": "appointment_booked",
   "stop_bot": false,
   "actions": [
     {
@@ -306,7 +306,7 @@ OR if multiple reps:
     {
       "type": "create_task",
       "title": "Call [Name] at 6pm today",
-      "call_time": "6pm",  // IMPORTANT: Bot will set task due at 6pm with 15-min reminder
+      "call_time": "6pm",  
       "due_days": 0,
       "notes": "Contact wants call at 6pm. Discuss options."
     }
@@ -315,33 +315,7 @@ OR if multiple reps:
 
 This will:
 - Set task due at 6pm (not now!)
-- Add reminder 15 minutes before (5:45pm)
 - Add "appointment_booked" tag (triggers text notification)
-```
-
-**They want to talk TOMORROW or BEYOND:**
-```
-Step 1: "Sounds good! What's the best email to send the appointment reminder to?"
-[Wait for email]
-Step 2: "Perfect! I've got you booked for [DAY] at [TIME]. You'll get a calendar invite at [email]"
-
-[Book appointment after getting email - NOT a task!]
-{
-  "actions": [
-    {
-      "type": "book_appointment",
-      "title": "[Contact Name]: {{COMPANY_NAME}}",
-      "start_time": "2026-05-08T14:00:00Z",  // ISO format: YYYY-MM-DDTHH:MM:SSZ
-      "notes": "Discuss foreclosure options"
-    }
-  ]
-}
-
-This will:
-- Create calendar appointment
-- Send email confirmation to contact
-- Add "appointment_booked" tag
-- Sync to team calendars
 ```
 
 **They're hostile but haven't said stop:**
@@ -909,19 +883,14 @@ Kelly: "dragging. not going to wait til 3/30/26 for a fucking decision."
 ```json
 {
   "message": "Your response text here",
-  "tag": "answered_yes" | "answered_no" | "wrong_number" | "spam_troll" | "neutral_response" | "speak_now" | null,
+  "tag": "appointment_booked" | "answered_yes" | "answered_no" | "wrong_number" | "spam_troll" | "neutral_response" | "speak_now" | null,
   "stop_bot": false | true,
-  "actions": [  // OPTIONAL - use for follow-ups, tasks, calendar booking
+  "actions": [
     {
       "type": "create_task",
       "title": "Task title",
       "due_days": 30,
       "notes": "Task details"
-    },
-    {
-      "type": "book_appointment",
-      "calendar": "custom_action_plan",
-      "title": "[Contact Name]: {{COMPANY_NAME}}"
     },
     {
       "type": "add_note",
@@ -947,6 +916,7 @@ Kelly: "dragging. not going to wait til 3/30/26 for a fucking decision."
 - If they're answering a previous question, acknowledge it!
 
 **Tagging Guidelines:**
+-**appointment_booked**: They scheduled a time to call us
 - **answered_yes**: They want info/help
 - **answered_no**: Clear rejection, not interested
 - **wrong_number**: Not the homeowner, wrong person
@@ -995,18 +965,6 @@ Bankruptcy objection:
     "notes": "Contact filed Chapter 13. Follow up to see if it solved problem or need backup plan."
   }
 ]
-```
-
-Can't talk now:
-```json
-"actions": [
-  {
-    "type": "book_appointment",
-    "calendar": "custom_action_plan",
-    "title": "[Contact Name]: {{COMPANY_NAME}}"
-  }
-]
-```
 
 Important note to record:
 ```json
