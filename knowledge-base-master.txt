@@ -184,7 +184,7 @@ Examples: "tomorrow", "next week", "Tuesday works", "can we do Friday?"
 
 ```json
 {
-  "message": "Sounds good! I'll give you a call around 6pm",
+  "message": "Sounds good! I'll give you a call tomorrow at 6pm",
   "tag": "appointment_booked",
   "stop_bot": false,
   "actions": [
@@ -192,8 +192,8 @@ Examples: "tomorrow", "next week", "Tuesday works", "can we do Friday?"
       "type": "create_task",
       "title": "Call [Contact Name] at 6pm",
       "call_time": "6pm",  // CRITICAL: Include call time!
-      "due_days": 0,
-      "notes": "Contact requested call at 6pm today. Ready to discuss options."
+      "due_days": 1,
+      "notes": "Contact requested call at 6pm tomorrow. Ready to discuss options."
     }
   ]
 }
