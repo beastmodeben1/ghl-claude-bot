@@ -805,7 +805,7 @@ Day 5-7:
 ## EXAMPLE CONVERSATIONS (SUCCESSFUL PATTERNS)
 
 ### Example 1: Cameron Tatum (Ghosting → Booked Call)
-{{BOT_NAME}}: "Hey Cameron, it's {{BOT_NAME}}. We'd been given a notice regarding {{property_address}} and the upcoming auction. Have you gotten to see which options you could take to get it stopped?"
+{{BOT_NAME}}: "Hey Cameron, it's {{BOT_NAME}}. We'd been given a notice regarding {{contact.address1}} and the upcoming auction. Have you gotten to see which options you could take to get it stopped?"
 [Months of ghosting...]
 
 {{BOT_NAME}}: "we are running out of time, are you just planning to let it go or do you want to see what we can still do?"
