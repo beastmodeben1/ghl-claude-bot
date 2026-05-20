@@ -17,6 +17,7 @@ const CLIENTS = {
     name: 'Caruth Brothers LLC',
     ghl_api_key: process.env.CARUTH_GHL_API_KEY,
     location_id: 'OuIxba3Lr0bnZvndMh3Z',
+    assigned_user_id: 'XeVxOOIGpT0fbigXVjK6', 
     knowledge_base_file: './knowledge-base-master.txt',
     bot_name: 'Peter',
     company_name: 'Caruth Brothers',
@@ -29,6 +30,7 @@ const CLIENTS = {
     name: 'Client 1 Name',
     ghl_api_key: process.env.CLIENT1_GHL_API_KEY,
     location_id: null,
+    assigned_user_id: null,
     knowledge_base_file: './knowledge-base-master.txt',
     bot_name: 'Sarah',
     company_name: 'ABC Realty',
@@ -41,6 +43,7 @@ const CLIENTS = {
     name: 'Client 2 Name',
     ghl_api_key: process.env.CLIENT2_GHL_API_KEY,
     location_id: null,
+    assigned_user_id: null,
     knowledge_base_file: './knowledge-base-master.txt',
     bot_name: 'Mike',
     company_name: 'XYZ Investments',
@@ -250,7 +253,7 @@ async function shouldRespond(contact_id, client, GHL_API_KEY) {
 }
 
 // Helper: Create GHL Task
-async function createGHLTask(contact_id, action, GHL_API_KEY) {
+async function createGHLTask(contact_id, action, client, GHL_API_KEY) {
   let dueDate = new Date();
   
   if (action.call_time) {
@@ -279,7 +282,7 @@ async function createGHLTask(contact_id, action, GHL_API_KEY) {
         body: action.notes || '',
         dueDate: dueDate.toISOString(),
         completed: false,
-        assignedTo: null,
+        assignedTo: client.assigned_user_id,
         reminderTime: new Date(dueDate.getTime() - 15 * 60 * 1000).toISOString()
       },
       {
@@ -374,7 +377,7 @@ async function executeActions(contact_id, contact_email, actions, client, GHL_AP
   for (const action of actions) {
     switch (action.type) {
       case 'create_task':
-        const taskCreated = await createGHLTask(contact_id, action, GHL_API_KEY);
+        const taskCreated = await createGHLTask(contact_id, action, client, GHL_API_KEY);
         if (taskCreated) appointmentBooked = true;
         break;
       case 'book_appointment':
