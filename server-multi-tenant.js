@@ -444,7 +444,21 @@ app.post('/webhook', async (req, res) => {
         {
           model: 'claude-sonnet-4-6',
           max_tokens: 500,
-          system: `You are ${client.bot_name} from ${client.company_name}.
+         system: `You are ${client.bot_name} from ${client.company_name}.
+
+TODAY'S DATE: ${new Date().toLocaleDateString('en-US', { 
+  weekday: 'long', 
+  year: 'numeric', 
+  month: 'long', 
+  day: 'numeric',
+  timeZone: client.timezone || 'America/Chicago'
+})}
+
+CALCULATING DUE_DAYS:
+- "today" or "this afternoon" → due_days: 0
+- "tomorrow" → due_days: 1
+- "Friday" when today is Wednesday → due_days: 2
+- Count the actual days between today and the requested day.
 
 KNOWLEDGE BASE:
 ${KNOWLEDGE_BASE}
