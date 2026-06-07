@@ -11,7 +11,7 @@ const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY;
 // Load knowledge base
 let KNOWLEDGE_BASE = '';
 try {
-  KNOWLEDGE_BASE = fs.readFileSync('./knowledge-base-caruth.txt', 'utf8');
+  KNOWLEDGE_BASE = fs.readFileSync('./knowledge-base-master.txt', 'utf8');
 } catch (e) {
   KNOWLEDGE_BASE = 'You are a pre-foreclosure specialist.';
 }
@@ -22,7 +22,7 @@ const CADENCES = {
     name: 'Loan Modification',
     days: [2, 5, 7, 8, 9, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200],
     repeat_days: 20,
-    max_attempts: 20
+    max_attempts: 10
   },
   'bankruptcy': {
     name: 'Bankruptcy',
@@ -34,7 +34,7 @@ const CADENCES = {
     name: 'Got it Covered',
     days: [7, 10, 15, 20, 30, 60, 90, 120, 150, 180],
     repeat_days: 30,
-    max_attempts: 15
+    max_attempts: 10
   },
   'engaged': {
     name: 'Engaged but Ghosted',
