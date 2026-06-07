@@ -254,38 +254,50 @@ async function shouldRespond(contact_id, client, GHL_API_KEY) {
 
 // Helper: Create GHL Task
 async function createGHLTask(contact_id, action, client, GHL_API_KEY) {
-  let dueDate = new Date();
-  
-  // Parse call_time if provided
+  const timeZone = client.timezone || 'America/Chicago';
+  const now = new Date();
+
+  // How far the client's timezone is from UTC right now (auto-handles CST vs CDT)
+  const offsetMs = now.getTime() - new Date(now.toLocaleString('en-US', { timeZone })).getTime();
+
+  // Build the due time using the client's wall clock
+  let due = new Date(now.toLocaleString('en-US', { timeZone }));
+
+  if (action.due_days) {
+    due.setDate(due.getDate() + action.due_days);
+  }
+
   if (action.call_time) {
     const timeMatch = action.call_time.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)/i);
     if (timeMatch) {
       let hours = parseInt(timeMatch[1]);
       const minutes = parseInt(timeMatch[2] || '0');
       const meridiem = timeMatch[3].toLowerCase();
-      
       if (meridiem === 'pm' && hours !== 12) hours += 12;
       if (meridiem === 'am' && hours === 12) hours = 0;
-      
-      dueDate.setHours(hours, minutes, 0, 0);
+      due.setHours(hours, minutes, 0, 0);
     }
   }
-  
-  // Add due_days if provided
-  if (action.due_days) {
-    dueDate.setDate(dueDate.getDate() + action.due_days);
-  }
-  
+
+  // Convert that client wall-clock time back to a true UTC timestamp for GHL
+  const dueUTC = new Date(due.getTime() + offsetMs);
+  const dueDateISO = dueUTC.toISOString();
+
+  // Plain-English log so you can confirm the time without doing UTC math
+  const readable = dueUTC.toLocaleString('en-US', {
+    timeZone, weekday: 'short', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit'
+  });
+
   try {
     await axios.post(
       `https://services.leadconnectorhq.com/contacts/${contact_id}/tasks`,
       {
         title: action.title,
         body: action.notes || '',
-        dueDate: dueDate.toISOString(),
+        dueDate: dueDateISO,
         completed: false,
         assignedTo: client.assigned_user_id
-        // Removed reminderTime - GHL doesn't support it
       },
       {
         headers: {
@@ -295,7 +307,7 @@ async function createGHLTask(contact_id, action, client, GHL_API_KEY) {
         }
       }
     );
-    console.log(`✅ Created task: ${action.title} due at ${dueDate.toLocaleString()}`);
+    console.log(`✅ Created task: ${action.title} — due ${readable} (${timeZone})`);
     return true;
   } catch (error) {
     console.error('❌ Error creating task:', error.response?.data || error.message);
@@ -336,9 +348,10 @@ async function executeActions(contact_id, contact_email, actions, client, GHL_AP
   for (const action of actions) {
     switch (action.type) {
       case 'create_task':
-        const taskCreated = await createGHLTask(contact_id, action, client, GHL_API_KEY);
-        if (taskCreated) appointmentBooked = true;
-        break;
+  const taskCreated = await createGHLTask(contact_id, action, client, GHL_API_KEY);
+  // Only count as a booked call if the task has a specific call_time
+  if (taskCreated && action.call_time) appointmentBooked = true;
+  break;
       case 'add_note':
         await addGHLNote(contact_id, action.notes, GHL_API_KEY);
         break;
