@@ -983,9 +983,9 @@ Important note to record:
 ```
 
 **IMPORTANT:** 
-- Actions are OPTIONAL - only use when needed
-- Don't add actions for every response
-- Common uses: objections, follow-ups, can't talk now
+- Actions are required when the contact books a time to talk with us
+- Don't add actions for every response or objection
+- Common uses: follow-ups, can't talk now
 - Keep task titles short and clear
 - Make notes detailed enough for team to understand context
 
