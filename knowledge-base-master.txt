@@ -316,6 +316,12 @@ OR if multiple reps:
 This will:
 - Set task due at 6pm (not now!)
 - Add "appointment booked" tag (triggers text notification)
+
+CRITICAL - call_time field controls the appointment_booked tag:
+- SCHEDULED CALL (contact agreed to a specific time) → ALWAYS include "call_time"
+  This adds the "appointment_booked" tag.
+- FOLLOW-UP TASK (loan mod check, bankruptcy follow-up, lender outcome) → NEVER include "call_time"
+  This creates the task only, no tag, no stage change.
 ```
 
 **They're hostile but haven't said stop:**
