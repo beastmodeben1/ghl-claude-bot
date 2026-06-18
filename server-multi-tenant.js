@@ -54,17 +54,26 @@ const CLIENTS = {
   }
 };
 
-// Load knowledge bases at startup
-const KNOWLEDGE_BASES = {};
-for (const [clientId, config] of Object.entries(CLIENTS)) {
+// ============================================================================
+// KNOWLEDGE BASES (keyed by SEGMENT, not client)
+// pfc         = pre-foreclosure script (default)
+// home_seller = off-market seller script (used when contact has "home seller ai" tag)
+// ============================================================================
+function safeRead(path) {
   try {
-    KNOWLEDGE_BASES[clientId] = fs.readFileSync(config.knowledge_base_file, 'utf8');
-    console.log(`✅ Loaded knowledge base for ${config.name}`);
+    const kb = fs.readFileSync(path, 'utf8');
+    console.log(`✅ Loaded KB: ${path} (${kb.length} chars)`);
+    return kb;
   } catch (e) {
-    console.log(`⚠️ Knowledge base not found for ${clientId}, using default`);
-    KNOWLEDGE_BASES[clientId] = 'You are a pre-foreclosure specialist helping distressed homeowners.';
+    console.log(`⚠️ Missing KB: ${path}`);
+    return 'You are a real estate specialist helping homeowners.';
   }
 }
+
+const KNOWLEDGE_BASES = {
+  pfc:         safeRead('./knowledge-base-master.txt'),
+  home_seller: safeRead('./knowledge-base-home-seller.txt')
+};
 
 // Stop keywords that auto-trigger stop_bot
 const STOP_KEYWORDS = [
@@ -241,14 +250,14 @@ async function shouldRespond(contact_id, client, GHL_API_KEY) {
     const hasStopTag = client.stop_tags.some(tag => contactTags.includes(tag));
     
     if (hasStopTag) {
-      return { shouldRespond: false, reason: 'Has stop tag' };
+      return { shouldRespond: false, reason: 'Has stop tag', tags: contactTags };
     }
 
-    return { shouldRespond: true };
+    return { shouldRespond: true, tags: contactTags };
 
   } catch (error) {
     console.error('Error checking contact:', error.message);
-    return { shouldRespond: false, reason: 'Error checking contact' };
+    return { shouldRespond: false, reason: 'Error checking contact', tags: [] };
   }
 }
 
@@ -348,10 +357,10 @@ async function executeActions(contact_id, contact_email, actions, client, GHL_AP
   for (const action of actions) {
     switch (action.type) {
       case 'create_task':
-  const taskCreated = await createGHLTask(contact_id, action, client, GHL_API_KEY);
-  // Only count as a booked call if the task has a specific call_time
-  if (taskCreated && action.call_time) appointmentBooked = true;
-  break;
+        const taskCreated = await createGHLTask(contact_id, action, client, GHL_API_KEY);
+        // Only count as a booked call if the task has a specific call_time
+        if (taskCreated && action.call_time) appointmentBooked = true;
+        break;
       case 'add_note':
         await addGHLNote(contact_id, action.notes, GHL_API_KEY);
         break;
@@ -360,7 +369,7 @@ async function executeActions(contact_id, contact_email, actions, client, GHL_AP
     }
   }
   
-  // Add appointment booked tag if task or appointment was created
+  // Add appointment booked tag if a scheduled-call task was created
   if (appointmentBooked) {
     try {
       await axios.post(
@@ -406,7 +415,6 @@ app.post('/webhook', async (req, res) => {
   
   const client = CLIENTS[client_id];
   const GHL_API_KEY = client.ghl_api_key;
-  const KNOWLEDGE_BASE = KNOWLEDGE_BASES[client_id];
   
   console.log(`🏢 Client: ${client.name}`);
   console.log(`👤 From: ${contact_name} (${contact_id})`);
@@ -419,13 +427,20 @@ app.post('/webhook', async (req, res) => {
   // Process async
   (async () => {
     try {
-      // Check if should respond
+      // Check if should respond (also returns the contact's tags)
       const check = await shouldRespond(contact_id, client, GHL_API_KEY);
       
       if (!check.shouldRespond) {
         console.log(`❌ Not responding: ${check.reason}`);
         return;
       }
+
+      // Pick the script based on the contact's tags
+      // "home seller ai" -> off-market seller KB, everyone else -> PFC KB
+      const contactTags = check.tags || [];
+      const segment = contactTags.includes('home seller ai') ? 'home_seller' : 'pfc';
+      const KNOWLEDGE_BASE = KNOWLEDGE_BASES[segment];
+      console.log(`📚 Segment: ${segment}`);
 
       // Get conversation phone
       const conversationPhone = await getConversationPhone(contact_id, GHL_API_KEY);
@@ -656,13 +671,13 @@ IMPORTANT: Respond ONLY with valid JSON. No markdown, no explanations, just the 
 // Health check
 app.get('/', (req, res) => {
   const clientCount = Object.keys(CLIENTS).length;
-  const kbSizes = Object.entries(KNOWLEDGE_BASES).map(([id, kb]) => 
-    `${id}: ${kb.length} chars`
+  const kbSizes = Object.entries(KNOWLEDGE_BASES).map(([segment, kb]) => 
+    `${segment}: ${kb.length} chars`
   ).join(', ');
   
   res.json({ 
     status: 'Multi-Tenant SMS Bot - Running',
-    version: '3.0.0-FINAL',
+    version: '3.1.0-SEGMENTED-KB',
     clients: clientCount,
     client_list: Object.keys(CLIENTS),
     knowledge_bases: kbSizes,
@@ -681,9 +696,9 @@ app.listen(PORT, () => {
   Object.entries(CLIENTS).forEach(([id, config]) => {
     console.log(`   - ${id}: ${config.name} (${config.bot_name})`);
   });
-  console.log(`📋 Knowledge Bases Loaded:`);
-  Object.entries(KNOWLEDGE_BASES).forEach(([id, kb]) => {
-    console.log(`   - ${id}: ${kb.length} characters`);
+  console.log(`📋 Knowledge Bases Loaded (by segment):`);
+  Object.entries(KNOWLEDGE_BASES).forEach(([segment, kb]) => {
+    console.log(`   - ${segment}: ${kb.length} characters`);
   });
   console.log(`\n✅ Ready to receive webhooks!`);
   console.log(`${'='.repeat(60)}\n`);
