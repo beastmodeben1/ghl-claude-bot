@@ -24,7 +24,7 @@ const CLIENTS = {
     max_messages_per_day: 6,
     timezone: 'America/Chicago',
     response_delay: { min: 9, max: 20 },
-    stop_tags: ['stop_bot', 'dnd', 'manual_takeover', 'do_not_contact']
+    stop_tags: ['stop bot', 'stop_bot', 'do not contact', 'do_not_contact', 'dnd', 'dnd enabled', 'manual takeover', 'manual_takeover']
   },
   'client1': {
     name: 'Client 1 Name',
@@ -37,7 +37,7 @@ const CLIENTS = {
     max_messages_per_day: 6,
     timezone: 'America/Chicago',
     response_delay: { min: 5, max: 20 },
-    stop_tags: ['stop_bot', 'dnd', 'manual_takeover', 'do_not_contact']
+    stop_tags: ['stop bot', 'stop_bot', 'do not contact', 'do_not_contact', 'dnd', 'dnd enabled', 'manual takeover', 'manual_takeover']
   },
   'client2': {
     name: 'Client 2 Name',
@@ -50,7 +50,7 @@ const CLIENTS = {
     max_messages_per_day: 3,
     timezone: 'America/Chicago',
     response_delay: { min: 10, max: 30 },
-    stop_tags: ['stop_bot', 'dnd', 'manual_takeover', 'do_not_contact']
+    stop_tags: ['stop bot', 'stop_bot', 'do not contact', 'do_not_contact', 'dnd', 'dnd enabled', 'manual takeover', 'manual_takeover']
   }
 };
 
@@ -246,11 +246,17 @@ async function shouldRespond(contact_id, client, GHL_API_KEY) {
     const contact = response.data.contact;
     const contactTags = contact.tags || [];
 
-    // Check for stop tags
-    const hasStopTag = client.stop_tags.some(tag => contactTags.includes(tag));
-    
-    if (hasStopTag) {
-      return { shouldRespond: false, reason: 'Has stop tag', tags: contactTags };
+    // Normalize tags so matching is reliable regardless of casing/spacing
+    const normalizedTags = contactTags.map(t => String(t).toLowerCase().trim());
+    const stopTags = client.stop_tags.map(t => String(t).toLowerCase().trim());
+    const hasStopTag = stopTags.some(tag => normalizedTags.includes(tag));
+
+    // Also honor GHL's native Do-Not-Disturb flag
+    const dndFlag = contact.dnd === true;
+
+    if (hasStopTag || dndFlag) {
+      const reason = (dndFlag && !hasStopTag) ? 'Contact has DND enabled' : 'Has stop tag';
+      return { shouldRespond: false, reason, tags: contactTags };
     }
 
     return { shouldRespond: true, tags: contactTags };
@@ -346,6 +352,30 @@ async function addGHLNote(contact_id, notes, GHL_API_KEY) {
   }
 }
 
+// Helper: Add GHL Tag(s)
+async function addGHLTag(contact_id, tag, GHL_API_KEY) {
+  if (!tag) return false;
+  const tags = Array.isArray(tag) ? tag : [tag];
+  try {
+    await axios.post(
+      `https://services.leadconnectorhq.com/contacts/${contact_id}/tags`,
+      { tags },
+      {
+        headers: {
+          'Authorization': `Bearer ${GHL_API_KEY}`,
+          'Content-Type': 'application/json',
+          'Version': '2021-07-28'
+        }
+      }
+    );
+    console.log(`✅ Added tag(s): ${tags.join(', ')}`);
+    return true;
+  } catch (error) {
+    console.error('❌ Error adding tag:', error.message);
+    return false;
+  }
+}
+
 // Helper: Execute Actions
 async function executeActions(contact_id, contact_email, actions, client, GHL_API_KEY) {
   if (!actions || actions.length === 0) return;
@@ -363,6 +393,9 @@ async function executeActions(contact_id, contact_email, actions, client, GHL_AP
         break;
       case 'add_note':
         await addGHLNote(contact_id, action.notes, GHL_API_KEY);
+        break;
+      case 'add_tag':
+        await addGHLTag(contact_id, action.tag, GHL_API_KEY);
         break;
       default:
         console.log(`⚠️ Unknown action type: ${action.type}`);
@@ -500,19 +533,20 @@ CRITICAL RULES:
 1. ALWAYS READ THE CONVERSATION HISTORY ABOVE before responding
 2. NEVER restart a conversation if there is existing history
 3. If their message seems random or confusing, CHECK THE HISTORY to see if they're answering a previous question
-4. If you cannot understand what they mean even with history, add tag "speak_now" to alert the team
+4. If you cannot understand what they mean even with history, add tag "speak now" to alert the team
 5. NEVER use dashes (-), semicolons (;), or em dashes (—) in your messages
 6. Sound like a human texting casually - not a grammar bot
 7. Keep response under 160 characters when possible
 8. Use casual language: "Yeah" not "Yes", "I get it" not "I understand"
 9. Reference their name naturally in conversation
+10. Whenever the contact shares something worth remembering (their situation, dollar amounts, timeline, who they're working with, objection details, or personal circumstances), include an add_note action summarizing it in one short line, so the team has a record just like they get from calls.
 
 RESPONSE FORMAT (JSON ONLY):
 {
   "message": "Your SMS response here",
-  "tag": "answered_yes|answered_no|wrong_number|spam_troll|neutral_response|speak_now",
+  "tag": "answered yes|answered no|wrong number|spam troll|neutral response|speak now|appointment booked|do not contact",
   "stop_bot": false,
-  "actions": [] // Optional - include when booking calls/appointments
+  "actions": [] // Optional - include for notes, follow-up tasks, booking calls
 }
 
 IMPORTANT: Respond ONLY with valid JSON. No markdown, no explanations, just the JSON object.`,
@@ -551,7 +585,7 @@ IMPORTANT: Respond ONLY with valid JSON. No markdown, no explanations, just the 
         console.log('⚠️ Could not parse JSON, using raw response');
         responseData = {
           message: responseContent.substring(0, 160),
-          tag: 'neutral_response',
+          tag: 'neutral response',
           stop_bot: false
         };
       }
@@ -561,18 +595,24 @@ IMPORTANT: Respond ONLY with valid JSON. No markdown, no explanations, just the 
       // Check for stop request
       if (responseData.stop_bot) {
         console.log('🛑 Contact requested stop');
-        await axios.post(
-          `https://services.leadconnectorhq.com/contacts/${contact_id}/tags`,
-          { tags: ['stop_bot'] },
-          {
-            headers: {
-              'Authorization': `Bearer ${GHL_API_KEY}`,
-              'Content-Type': 'application/json',
-              'Version': '2021-07-28'
-            }
+        // Apply the real GHL tags so both this bot and your GHL workflows honor the stop
+        await addGHLTag(contact_id, ['do not contact', 'stop bot'], GHL_API_KEY);
+        // Optionally send a brief closing message if Claude provided one
+        if (responseData.message && responseData.message.trim().length > 0) {
+          try {
+            const stopPayload = { type: 'SMS', contactId: contact_id, message: makeMessageHuman(responseData.message) };
+            if (conversationPhone) stopPayload.from = conversationPhone;
+            await axios.post(
+              'https://services.leadconnectorhq.com/conversations/messages',
+              stopPayload,
+              { headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-07-28' } }
+            );
+            console.log('✅ Sent closing message before stopping');
+          } catch (e) {
+            console.error('⚠️ Could not send closing message:', e.message);
           }
-        );
-        console.log('✅ Added stop_bot tag, not sending response');
+        }
+        console.log('✅ Applied stop tags, halting bot for this contact');
         return;
       }
 
