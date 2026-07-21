@@ -11,6 +11,9 @@ app.use(express.json());
 // CLAUDE API KEY (shared by all clients)
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY;
 
+// AI on/off switch: only respond to contacts carrying one of these tags
+const AI_ENABLE_TAGS = ['pfc ai', 'home seller ai'];
+
 // CLIENT CONFIGURATIONS
 const CLIENTS = {
   'caruth': {
@@ -230,6 +233,22 @@ async function getConversationHistory(contact_id, GHL_API_KEY) {
     return [];
   }
 }
+// Runaway-loop guard: settings + helper. Prevents rapid-fire looping (auto-responders,
+// trolls, bot-vs-bot) without ever blocking a normal conversation. Hands off to a human.
+const LOOP_MAX = 12;            // max outbound texts to one contact within the window
+const LOOP_WINDOW_MIN = 30;     // rolling window in minutes
+async function countRecentOutbound(contact_id, account_id) {
+  try {
+    const KEY = process.env.STREAMLINED_API_KEY;
+    if (!KEY) return 0;
+    const q = `SELECT COUNT(*) AS n FROM messages WHERE contact_id='${contact_id}' AND account_id='${account_id}' AND type='sms' AND direction='outbound' AND timestamp > NOW() - INTERVAL '${LOOP_WINDOW_MIN} minutes'`;
+    const resp = await axios.post('https://gateway.streamlined.so/query/api/execute-sql', { sql: q }, { headers: { 'Content-Type': 'application/json', 'X-API-Key': KEY } });
+    if (resp.data && resp.data.status === 'error') return 0;
+    const rows = (resp.data && resp.data.result) || [];
+    return rows.length ? parseInt(rows[0].n) : 0;
+  } catch (e) { return 0; }
+}
+
 // Helper: Check if should respond
 async function shouldRespond(contact_id, client, GHL_API_KEY) {
   try {
@@ -471,9 +490,39 @@ app.post('/webhook', async (req, res) => {
       // Pick the script based on the contact's tags
       // "home seller ai" -> off-market seller KB, everyone else -> PFC KB
       const contactTags = check.tags || [];
+
+      // POSITIVE GATE: only the AI-enabled tags get a response
+      const enableTags = contactTags.map(t => String(t).toLowerCase().trim());
+      if (!AI_ENABLE_TAGS.some(t => enableTags.includes(t))) {
+        console.log('❌ Not responding: contact has no "pfc ai" or "home seller ai" tag');
+        return;
+      }
+
       const segment = contactTags.includes('home seller ai') ? 'home_seller' : 'pfc';
       const KNOWLEDGE_BASE = KNOWLEDGE_BASES[segment];
       console.log(`📚 Segment: ${segment}`);
+
+      // Detect lead source so the bot frames replies correctly
+      const normTags = contactTags.map(t => String(t).toLowerCase().trim());
+      const isFacebookLead = normTags.some(t => t.includes('fb lead') || t.includes('facebook'));
+      const leadSource = isFacebookLead
+        ? 'INBOUND Facebook lead. They filled out our form online, so our first message referenced their form submission. Do NOT talk as if this is a cold outreach about a county notice.'
+        : 'OUTBOUND lead. We reached out first based on a public pre-foreclosure / auction notice. They did not contact us first, so it is normal if they do not recognize us at first.';
+      console.log(`🧭 Lead source: ${isFacebookLead ? 'Facebook inquiry' : 'Outbound'}`);
+
+      // Runaway-loop guard: hand off to a human if we are rapid-fire looping with this contact
+      const recentOutbound = await countRecentOutbound(contact_id, client.location_id);
+      if (recentOutbound >= LOOP_MAX) {
+        console.log(`🔁 Loop guard tripped (${recentOutbound} outbound in ${LOOP_WINDOW_MIN}min) - tagging "speak now", handing to human`);
+        try {
+          await axios.post(
+            `https://services.leadconnectorhq.com/contacts/${contact_id}/tags`,
+            { tags: ['speak now'] },
+            { headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-07-28' } }
+          );
+        } catch (e) { console.error('loop-guard tag error:', e.message); }
+        return;
+      }
 
       // Get conversation phone
       const conversationPhone = await getConversationPhone(contact_id, GHL_API_KEY);
@@ -528,6 +577,7 @@ CONTACT INFO:
 - Name: ${contact_name}
 - Phone: ${phone}
 - Property: ${property_address || 'Not provided'}
+- Lead source: ${leadSource}
 ${historyString}
 CRITICAL RULES:
 1. ALWAYS READ THE CONVERSATION HISTORY ABOVE before responding
