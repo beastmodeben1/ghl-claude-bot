@@ -10,6 +10,7 @@ services:
     name: daily-followup
     env: node
     plan: starter
-    schedule: "0 10 * * *"
+    # 16:00 UTC = ~11am CDT / 10am CST — inside the engine's 9am-8pm business-hours window.
+    schedule: "0 16 * * *"
     buildCommand: npm install
     startCommand: node cron-follow-up.js
