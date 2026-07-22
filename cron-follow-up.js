@@ -73,6 +73,12 @@ const CONFIG = {
     'FB Offer Denied'
   ],
 
+  // ---- NEVER follow up if the contact has an OPEN opportunity in one of these stages ----
+  // (matched case-insensitively, across ALL pipelines)
+  NEVER_STAGES: [
+    'Under Contract', 'UC - On Hold', 'Closed', 'Deal Closed', 'Passed', 'No Deal / Passed'
+  ],
+
   // ---- NEVER follow up if the contact carries ANY of these tags ----
   NEVER_TAGS: [
     'do not contact', 'do_not_contact', 'dnd enabled', 'dnd',
@@ -113,6 +119,7 @@ const CONFIG = {
     handled:       { gaps: [45, 38],                        max_touches: 24 }, // ~6.5 wks, then every ~38 days until they say stop
     cold:          { gaps: [3, 5, 10, 21, 40, 60],          max_touches: 7  },
     offer:         { gaps: [3, 5, 7, 14, 21, 30],           max_touches: 8  }, // 3 days after offer, then space out
+    fb_drip:       { gaps: [14],                            max_touches: 100 }, // FB lead who never answered: steady every ~14 days until they say stop
     default:       { gaps: [3, 7, 14, 30, 45],              max_touches: 8  }
   },
 
@@ -163,10 +170,19 @@ const CONFIG = {
   CONTEXT_CALL_LIMIT: 2,
 
   // Candidate pool size pulled from the DB per run (before cap + timing filters)
-  CANDIDATE_LIMIT: 800,
+  CANDIDATE_LIMIT: 500,
 
   // Seconds to pause between live sends (be gentle with the carrier)
   SEND_DELAY_SECONDS: 3,
+
+  // ---- GHOST EMAIL (for FB drip leads) ----
+  // On fb_drip touches, also send a CONVERSATIONAL, situational email. The subject and body
+  // are written fresh by the AI each time (so subjects vary and the body references the
+  // person's situation). A booking link is appended under the body automatically.
+  // NOTE: requires the GHL location's sending email/domain to be set up. Test the first one.
+  // Set to false to turn emails off entirely.
+  SEND_GHOST_EMAIL: true,
+  OPTIONS_LINK: 'https://options.caruthbrothers.com',
 
   FOLLOWUP_KB_FILE: './knowledge-base-follow-up.txt',
   CLAUDE_MODEL: 'claude-sonnet-4-6'
@@ -281,7 +297,7 @@ async function getCandidates() {
           OR EXISTS (SELECT 1 FROM call_analysis_results car WHERE car.call_id = k.id AND car.step_slug='call_summary')
         )
     )
-    SELECT g.contact_id, g.stage, c.name, c.phone, c.tags,
+    SELECT g.contact_id, g.stage, c.name, c.phone, c.email, c.tags,
            g.last_inbound, g.last_outbound,
            EXTRACT(EPOCH FROM (NOW() - g.last_outbound))/86400 AS days_since_out,
            (g.last_inbound IS NOT NULL) AS has_replied,
@@ -305,6 +321,12 @@ async function getCandidates() {
       SELECT 1 FROM calls kk
       WHERE kk.contact_id = g.contact_id AND kk.account_id = ${A}
         AND kk.created_at > NOW() - INTERVAL '${CONFIG.RECENT_CALL_DAYS} days'
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM opportunities ox
+      JOIN pipeline_stages px ON px.id = ox.pipeline_stage_id
+      WHERE ox.contact_id = g.contact_id AND ox.account_id = ${A} AND ox.status = 'open'
+        AND lower(px.name) = ANY(${pgArray(CONFIG.NEVER_STAGES.map(x => x.toLowerCase()))})
     )
   `;
   return sql(query);
@@ -369,6 +391,10 @@ function pickCadence(candidate) {
   const engaged = candidate.has_replied || candidate.has_call;
   if (CONFIG.ENGAGED_OVERRIDE_IF_ENGAGED && engaged) return 'engaged';
 
+  // 3.5) Facebook lead that has NEVER engaged -> steady 14-day drip until they say stop
+  const isFb = t.some(x => x.includes('fb lead') || x.includes('facebook'));
+  if (isFb && !engaged) return 'fb_drip';
+
   // 4) Fall back to stage
   return CONFIG.STAGE_TO_CADENCE[candidate.stage] || 'default';
 }
@@ -413,6 +439,15 @@ async function draftMessage(candidate, cadenceKey, context) {
     ? 'yes — replied by text, then went quiet'
     : (candidate.has_call ? 'yes — spoke with us by PHONE, then went quiet (never texted back)' : 'no — never replied by text or phone');
 
+  const emailInstr = cadenceKey === 'fb_drip'
+    ? `
+
+ALSO write a short EMAIL to this person. They filled out our form (usually about mortgage or possible foreclosure trouble) but have never replied to our texts. Make it CONVERSATIONAL and SITUATIONAL, not generic: reference why they reached out, acknowledge life gets busy and their cell probably gets tons of texts and calls, and ask when a good time to connect is. A few warm human sentences. Do NOT paste a URL (a booking link is added automatically under your text) but invite them to book a time and see families we have helped. Sign off as ${CONFIG.BOT_NAME}, ${CONFIG.COMPANY_NAME}. Make the SUBJECT LINE short, attention-grabbing, and DIFFERENT every time, never reuse a subject.
+Return ONLY JSON: { "message": "<sms text>", "email_subject": "<subject>", "email_body": "<email body, blank line between paragraphs>" }`
+    : `
+
+Return ONLY JSON: { "message": "..." }`;
+
   const system = `${FOLLOWUP_KB}
 
 CONTACT: ${candidate.name || 'Unknown'} (first name: ${firstName})
@@ -433,13 +468,13 @@ RECENT TEXT HISTORY (oldest to newest):
 ${history}
 
 Write the NEXT single follow-up text. Reference what we actually know (calls/notes) when useful.
-Do not repeat any line already sent above. Return ONLY JSON: { "message": "..." }`;
+Do not repeat any line already sent above.${emailInstr}`;
 
   const resp = await axios.post(
     'https://api.anthropic.com/v1/messages',
     {
       model: CONFIG.CLAUDE_MODEL,
-      max_tokens: 200,
+      max_tokens: 500,
       system,
       messages: [{ role: 'user', content: `Draft follow-up touch #${touchNumber} (${cadenceKey} cadence).` }]
     },
@@ -447,13 +482,17 @@ Do not repeat any line already sent above. Return ONLY JSON: { "message": "..." 
   );
 
   const text = resp.data.content.filter(b => b.type === 'text').map(b => b.text).join('');
-  let msg;
+  let parsed = {};
   try {
-    msg = JSON.parse(text.replace(/```json\n?|```/g, '').trim()).message;
+    parsed = JSON.parse(text.replace(/```json\n?|```/g, '').trim());
   } catch (e) {
-    msg = text.trim().slice(0, 160);
+    parsed = { message: text.trim().slice(0, 160) };
   }
-  return makeMessageHuman(msg);
+  const result = { message: makeMessageHuman(parsed.message || ''), email: null };
+  if (cadenceKey === 'fb_drip' && parsed.email_subject && parsed.email_body) {
+    result.email = { subject: String(parsed.email_subject).trim(), body: String(parsed.email_body).trim() };
+  }
+  return result;
 }
 
 // --------------------------------------------------------------------------
@@ -463,6 +502,14 @@ async function sendSMS(contactId, message) {
   await axios.post(
     'https://services.leadconnectorhq.com/conversations/messages',
     { type: 'SMS', contactId, message },
+    { headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-07-28' } }
+  );
+}
+
+async function sendEmail(contactId, subject, html) {
+  await axios.post(
+    'https://services.leadconnectorhq.com/conversations/messages',
+    { type: 'Email', contactId, subject, html },
     { headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-07-28' } }
   );
 }
@@ -544,15 +591,26 @@ async function run() {
   for (const c of plan) {
     try {
       const context = await getContext(c.contact_id);
-      const message = await draftMessage(c, c.cadence, context);
+      const drafted = await draftMessage(c, c.cadence, context);
+      const message = drafted.message;
       const icon = c.engaged ? (c.has_call && !c.has_replied ? '📞' : '💬') : '🧊';
-      const line = `${icon} [${c.cadence}] ${c.name || c.contact_id} | ${c.stage} | ${Math.round(c.days_since_out)}d | touch#${Number(c.unanswered)+1} → "${message}"`;
+      let line = `${icon} [${c.cadence}] ${c.name || c.contact_id} | ${c.stage} | ${Math.round(c.days_since_out)}d | touch#${Number(c.unanswered)+1} → "${message}"`;
+      if (drafted.email) line += `\n     ✉️ "${drafted.email.subject}" — ${drafted.email.body.replace(/\s+/g,' ').slice(0,150)}...`;
       console.log(line);
       report.push(line);
 
       if (!CONFIG.DRY_RUN) {
         await sendSMS(c.contact_id, message);
         await addNote(c.contact_id, `AI follow-up sent (${c.cadence}, touch #${Number(c.unanswered)+1}): ${message}`);
+        // On FB drip touches, also send the AI-written conversational email + booking link
+        if (c.cadence === 'fb_drip' && CONFIG.SEND_GHOST_EMAIL && c.email && drafted.email) {
+          try {
+            const bodyHtml = drafted.email.body.split(/\n\s*\n/).map(p => `<p>${p.trim().replace(/\n/g,'<br>')}</p>`).join('')
+              + `<p><a href="${CONFIG.OPTIONS_LINK}">Book a time and see families we've helped</a></p>`;
+            await sendEmail(c.contact_id, drafted.email.subject, bodyHtml);
+            console.log(`   ✉️ ghost email sent ("${drafted.email.subject}")`);
+          } catch (e) { console.error(`   ✉️ email failed: ${e.message}`); }
+        }
         sent++;
         await sleep(CONFIG.SEND_DELAY_SECONDS);
       }
