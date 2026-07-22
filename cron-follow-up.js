@@ -20,10 +20,10 @@ const fs = require('fs');
 const CONFIG = {
 
   // ---- SAFETY ----
-  DRY_RUN: true,              // true = send nothing, just log the plan. Set false to go live.
-  DAILY_SEND_CAP: 100,        // hard limit on messages sent in one run
+  DRY_RUN: false,              // true = send nothing, just log the plan. Set false to go live.
+  DAILY_SEND_CAP: 50,        // hard limit on messages sent in one run
   MIN_GHOST_DAYS: 2,          // ignore anyone we texted more recently than this
-  RECENT_CALL_DAYS: 3,        // skip anyone we've CALLED in the last N days (don't step on a live convo / appointment)
+  RECENT_CALL_DAYS: 1,        // skip anyone we've CALLED in the last N days (don't step on a live convo / appointment)
 
   // ---- TEST SCOPE ----
   // Leave EMPTY [] to run against everyone eligible.
@@ -56,7 +56,6 @@ const CONFIG = {
     'PFC Weekly Follow Up',
     'PFC Monthly Follow Up',
     'PFC Monthly - Needs Nurtured',
-    'New Lead - Needs Nurtured',
     'Deep Dive',
     'Opt In',
     'FB PFC Weekly Follow Up',
@@ -76,7 +75,7 @@ const CONFIG = {
   // ---- NEVER follow up if the contact has an OPEN opportunity in one of these stages ----
   // (matched case-insensitively, across ALL pipelines)
   NEVER_STAGES: [
-    'Under Contract', 'UC - On Hold', 'Closed', 'Deal Closed', 'Passed', 'No Deal / Passed'
+    'Under Contract', 'UC - On Hold', 'Closed', 'Deal Closed', 'Passed', 'No Deal / Passed', 'No Answer'
   ],
 
   // ---- NEVER follow up if the contact carries ANY of these tags ----
@@ -165,7 +164,7 @@ const CONFIG = {
   MIN_CALL_SECONDS: 60,
 
   // How many recent messages / notes / call summaries to give Claude for context
-  CONTEXT_MESSAGE_LIMIT: 12,
+  CONTEXT_MESSAGE_LIMIT: 16,
   CONTEXT_NOTE_LIMIT: 3,
   CONTEXT_CALL_LIMIT: 2,
 
