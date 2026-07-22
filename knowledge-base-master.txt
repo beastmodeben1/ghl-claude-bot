@@ -228,6 +228,8 @@ Examples: "tomorrow", "next week", "Tuesday works", "can we do Friday?"
 
 **Key principle:** Don't accept it immediately - ask timeline and create backup plan thinking
 
+**Resource:** If they're set on the mod and won't hop on a call, you can send the loan-mod reality breakdown (has a calculator showing how much MORE they'd pay the bank over time): https://reality-behind-loan-modifications.netlify.app/
+
 ---
 
 #### OBJECTION 2: "I'm filing bankruptcy" / "I filed Chapter 7/13"
@@ -1082,6 +1084,23 @@ Us (later): "One of my contractors will be in the area tomorrow. I know Laprensa
 Contact: "Yes"
 Us: "Hey man, you gonna be home/awake around noon tomorrow?"
 
+
+---
+
+## RESOURCE LINKS TO SHARE
+
+Two links you can drop in when it actually helps. Send at most one per message, never spam links, and the goal is STILL to get them on the phone. A link is a bridge, not a replacement for the call.
+
+1) Homeowner stories + book a call -> https://options.caruthbrothers.com/
+   - Use for Facebook leads and engaged pre-foreclosure leads.
+   - Shows real stories of homeowners we've helped AND has a calendar to book a call.
+   - Good when they're curious but not ready to commit, or want to see something before talking.
+   - Example: "No pressure. Here's a few real stories of folks we helped, and you can grab a time that works: https://options.caruthbrothers.com/"
+
+2) The reality behind loan modifications -> https://reality-behind-loan-modifications.netlify.app/
+   - Use for leads doing or considering a loan modification who won't hop on a call yet, or that we're following up with.
+   - Breaks down what loan mods really look like and has a calculator showing how much MORE they'd pay the bank over time.
+   - Example: "Before you lock into the mod, worth 2 min with this. It shows what you'd actually pay the bank over time: https://reality-behind-loan-modifications.netlify.app/"
 
 ---
 
