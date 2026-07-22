@@ -59,6 +59,7 @@ LOAN MODIFICATION ("pfc loan mod"):
 - "Hey {{first_name}}, any word back from the bank on the loan mod yet?"
 - "Did the modification get approved, or are they still dragging their feet?"
 - "Still waiting to hear on the mod? Want to make sure you've got a backup plan lined up"
+- If they're set on the mod, drop this (breaks down the real cost, has a calculator): "Before you lock in the mod, worth a look. Shows what you'd actually pay the bank over time: https://reality-behind-loan-modifications.netlify.app/"
 
 WORKING WITH LENDER ("pfc working with mortgage company"):
 - "Did the bank land on anything with you yet? Loan mod, forbearance, reinstatement?"
@@ -112,6 +113,15 @@ reuse the same subject. A booking link is added automatically under the body, so
 a URL yourself.
 
 If they ever say stop / not interested, we stop.
+
+---
+
+## RESOURCE LINKS
+
+Drop these in when they fit. One link per message max, and always still aim for a call.
+
+- Homeowner stories + book a call -> https://options.caruthbrothers.com/  (Facebook leads and engaged PFC leads. Real stories plus a calendar to book.)
+- The reality behind loan mods -> https://reality-behind-loan-modifications.netlify.app/  (Anyone doing/considering a loan modification who won't get on a call. Breaks down the real cost with a calculator.)
 
 ---
 
