@@ -208,11 +208,13 @@ async function getConversationHistory(contact_id, GHL_API_KEY) {
     }
 
     const sql = `
-      SELECT direction, body, timestamp
-      FROM messages
-      WHERE contact_id = '${contact_id}'
-      ORDER BY timestamp ASC
-      LIMIT 20
+      SELECT direction, body FROM (
+        SELECT direction, body, timestamp
+        FROM messages
+        WHERE contact_id = '${contact_id}' AND type = 'sms' AND body IS NOT NULL
+        ORDER BY timestamp DESC
+        LIMIT 40
+      ) t ORDER BY timestamp ASC
     `;
 
     const response = await axios.post(
@@ -252,6 +254,28 @@ async function getConversationHistory(contact_id, GHL_API_KEY) {
     return [];
   }
 }
+// Helper: pull recent notes + call summaries so the bot knows the full situation/history
+async function getContactContext(contact_id) {
+  const KEY = process.env.STREAMLINED_API_KEY;
+  if (!KEY) return '';
+  try {
+    const q = `SELECT kind, left(text, 500) AS text, ts FROM (
+      SELECT 'note' AS kind, body AS text, created_at AS ts FROM notes WHERE contact_id='${contact_id}'
+      UNION ALL
+      SELECT 'call summary' AS kind, (car.result->>'value') AS text, k.created_at AS ts
+        FROM calls k JOIN call_analysis_results car ON car.call_id = k.id AND car.step_slug='call_summary'
+        WHERE k.contact_id='${contact_id}'
+    ) x ORDER BY ts DESC LIMIT 6`;
+    const resp = await axios.post('https://gateway.streamlined.so/query/api/execute-sql', { sql: q }, { headers: { 'Content-Type': 'application/json', 'X-API-Key': KEY } });
+    if (resp.data && resp.data.status === 'error') return '';
+    const rows = (resp.data && resp.data.result) || [];
+    if (!rows.length) return '';
+    const lines = rows.reverse().map(r => `- [${r.kind}] ${r.text}`).join('\n');
+    console.log(`🗒️ Loaded ${rows.length} notes/call summaries for context`);
+    return `\n\nNOTES & CALL SUMMARIES (what our team already knows - these capture prior calls and details, use them):\n${lines}\n`;
+  } catch (e) { console.error('note context error:', e.message); return ''; }
+}
+
 // Runaway-loop guard: settings + helper. Prevents rapid-fire looping (auto-responders,
 // trolls, bot-vs-bot) without ever blocking a normal conversation. Hands off to a human.
 const LOOP_MAX = 12;            // max outbound texts to one contact within the window
@@ -308,6 +332,25 @@ async function shouldRespond(contact_id, client, GHL_API_KEY) {
 // Helper: Create GHL Task
 // Helper: find the human rep who last worked this lead (last MANUAL text or any call).
 // Falls back to null if it's been all-bot, so the task goes to the default owner.
+// Helper: first name of the rep who last worked this lead, so the bot signs as them. Null if none.
+async function getWorkingRepName(contact_id, account_id) {
+  try {
+    const KEY = process.env.STREAMLINED_API_KEY;
+    if (!KEY) return null;
+    const q = `SELECT u.name FROM (
+      SELECT user_id, timestamp AS ts FROM messages
+        WHERE contact_id='${contact_id}' AND account_id='${account_id}' AND direction='outbound' AND source='manual' AND user_id IS NOT NULL
+      UNION ALL
+      SELECT user_id, created_at AS ts FROM calls
+        WHERE contact_id='${contact_id}' AND account_id='${account_id}' AND user_id IS NOT NULL
+    ) t JOIN users u ON u.id = t.user_id WHERE u.name IS NOT NULL AND u.name <> '' ORDER BY t.ts DESC LIMIT 1`;
+    const resp = await axios.post('https://gateway.streamlined.so/query/api/execute-sql', { sql: q }, { headers: { 'Content-Type': 'application/json', 'X-API-Key': KEY } });
+    if (resp.data && resp.data.status === 'error') return null;
+    const rows = (resp.data && resp.data.result) || [];
+    return rows.length && rows[0].name ? String(rows[0].name).trim() : null;
+  } catch (e) { return null; }
+}
+
 async function getWorkingUserId(contact_id, account_id) {
   try {
     const KEY = process.env.STREAMLINED_API_KEY;
@@ -509,20 +552,10 @@ async function executeActions(contact_id, contact_email, actions, client, GHL_AP
   for (const action of actions) {
     switch (action.type) {
       case 'create_task': {
-        if (action.call_time) {
-          // Scheduled call -> book a REAL calendar appointment
-          const booked = await bookGHLAppointment(contact_id, action, client, GHL_API_KEY, workingUserId);
-          if (booked) {
-            appointmentBooked = true;
-          } else {
-            // Booking failed -> fall back to a task so we never lose the appointment
-            const taskCreated = await createGHLTask(contact_id, action, client, GHL_API_KEY, workingUserId);
-            if (taskCreated) appointmentBooked = true;
-          }
-        } else {
-          // Follow-up task (no scheduled call time) -> just a task
-          await createGHLTask(contact_id, action, client, GHL_API_KEY, workingUserId);
-        }
+        // Calendar booking is DISABLED for now (task-based, which works reliably).
+        // The bookGHLAppointment() helper is left in place, ready to re-enable once we debug the GHL calendar error.
+        const taskCreated = await createGHLTask(contact_id, action, client, GHL_API_KEY, workingUserId);
+        if (taskCreated && action.call_time) appointmentBooked = true;
         break;
       }
       case 'add_note':
@@ -657,6 +690,10 @@ app.post('/webhook', async (req, res) => {
 
       // Get conversation history (CRITICAL!)
       const conversationHistory = await getConversationHistory(contact_id, GHL_API_KEY);
+      const contactContext = await getContactContext(contact_id);
+      const repFullName = await getWorkingRepName(contact_id, client.location_id);
+      const repName = repFullName ? repFullName.split(' ')[0] : client.bot_name;
+      console.log(`Signing as: ${repName}`);
 
       // Random delay
       const delay = getRandomDelay(client.response_delay.min, client.response_delay.max);
@@ -676,7 +713,7 @@ app.post('/webhook', async (req, res) => {
         {
           model: 'claude-sonnet-4-6',
           max_tokens: 500,
-         system: `You are ${client.bot_name} from ${client.company_name}.
+         system: `You are ${repName} from ${client.company_name}. Your name in this conversation is ${repName}. ALWAYS include your name when you introduce yourself (like "it's ${repName}"). NEVER leave your name blank - never send "it's with Caruth" or a greeting with no name.
 
 TODAY'S DATE: ${new Date().toLocaleDateString('en-US', { 
   weekday: 'long', 
@@ -700,7 +737,7 @@ CONTACT INFO:
 - Phone: ${phone}
 - Property: ${property_address || 'Not provided'}
 - Lead source: ${leadSource}
-${historyString}
+${historyString}${contactContext}
 CRITICAL RULES:
 1. ALWAYS READ THE CONVERSATION HISTORY ABOVE before responding
 2. NEVER restart a conversation if there is existing history
@@ -710,7 +747,7 @@ CRITICAL RULES:
 6. Sound like a human texting casually - not a grammar bot
 7. Keep response under 160 characters when possible
 8. Use casual language: "Yeah" not "Yes", "I get it" not "I understand"
-9. Reference their name naturally in conversation
+9. Do NOT use their name in every message (sounds robotic) - use it sparingly, often not at all. Do NOT open every reply with an acknowledgement phrase ("I hear you"/"Got it"/"I understand") - vary it and a lot of the time just answer directly. Slightly imperfect casual grammar (dont, cant, lowercase i, a missing comma) is GOOD, it reads human.
 10. NOTES - be selective, do NOT note every message. Do NOT add a note for routine stuff (greetings, "ok"/"yes", scheduling or confirming a time, acknowledgments, emojis, small talk, or a plain "idk"). Add AT MOST ONE short add_note action, and ONLY when the contact reveals something genuinely note-worthy from this list:
    - Situation: how far behind, loan balance, monthly payment, sale/auction date, other liens
    - What they are doing about it: loan mod, bankruptcy, reinstatement, working with the lender / an attorney / a realtor, listed or on the market, already under contract
@@ -720,6 +757,7 @@ CRITICAL RULES:
    If their latest message contains none of the above, do NOT include an add_note action.
 11. ALWAYS prioritize getting them on the phone. Accept WHATEVER time they give you (3:15, 3:45, tonight, tomorrow, whenever) and confirm it naturally, e.g. "Sounds good, I'll give you a call at 3:15." Then set the appointment/task for that exact time. There is NO calendar-availability limit on your end, so NEVER tell a contact a time isn't available, that we don't have that slot, or that you can't do a call at their requested time. Do not let scheduling logistics ever stop you from locking in a call. If they give a specific time, treat it as a scheduled call (include call_time).
 12. CALL HOURS: only propose or confirm call times between 7:30am and 9:30pm their time. If they ask for a time outside that (like 6am or 11pm), do NOT refuse - offer the closest time that works, e.g. "I can do first thing at 7:30" or "how about 9pm tonight, or first thing in the morning?" Always still aim to lock in the call.
+13. USE the full history AND the notes/call summaries above before replying. If a price, amount, or detail differs from what was said earlier (e.g. they said 190k before and now say 260k), acknowledge the change and reconcile it - never reply as if you forgot what was already discussed. Never narrate that you are reading the history (do NOT say things like "looking at the conversation history") - just reference the facts naturally, like a person who remembers the conversation.
 
 RESPONSE FORMAT (JSON ONLY):
 {
