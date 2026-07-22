@@ -14,6 +14,25 @@ const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY;
 // AI on/off switch: only respond to contacts carrying one of these tags
 const AI_ENABLE_TAGS = ['pfc ai', 'home seller ai'];
 
+// GHL calendar for AI-booked phone appointments (Custom Action Plan - Phone Appt)
+const CALENDAR_ID = 'UqgEPH7UZA5U6M5p9jkg';
+// Assign appointments to the "Team Caruth Brothers Real Estate" user so they land on the
+// whole team's Google calendars (matches all existing bookings on this calendar).
+const CALENDAR_TEAM_USER_ID = 'TfrfJn4xcgwlUU0Rq7rl';
+const APPT_DURATION_MIN = 30; // length of a booked phone appointment
+
+// Working hours (contact's local time). Text replies 7:00am-10:30pm; scheduled calls 7:30am-9:30pm.
+const TEXT_START_MIN = 7 * 60;         // 7:00am
+const TEXT_END_MIN   = 22 * 60 + 30;   // 10:30pm
+const CALL_START_MIN = 7 * 60 + 30;    // 7:30am
+const CALL_END_MIN   = 21 * 60 + 30;   // 9:30pm
+function nowMinutesInTz(tz) {
+  const p = new Date().toLocaleString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: false }).match(/(\d{1,2}):(\d{2})/);
+  if (!p) return 12 * 60;
+  let h = parseInt(p[1]); if (h === 24) h = 0;
+  return h * 60 + parseInt(p[2]);
+}
+
 // CLIENT CONFIGURATIONS
 const CLIENTS = {
   'caruth': {
@@ -333,6 +352,13 @@ async function createGHLTask(contact_id, action, client, GHL_API_KEY, assignedUs
     }
   }
 
+  // Keep scheduled CALLS inside 7:30am - 9:30pm (follow-up tasks with no call_time are left as-is)
+  if (action.call_time) {
+    const lm = due.getHours() * 60 + due.getMinutes();
+    if (lm < CALL_START_MIN) due.setHours(7, 30, 0, 0);
+    else if (lm > CALL_END_MIN) { due.setDate(due.getDate() + 1); due.setHours(7, 30, 0, 0); }
+  }
+
   // Convert that client wall-clock time back to a true UTC timestamp for GHL
   const dueUTC = new Date(due.getTime() + offsetMs);
   const dueDateISO = dueUTC.toISOString();
@@ -416,6 +442,58 @@ async function addGHLTag(contact_id, tag, GHL_API_KEY) {
 }
 
 // Helper: Execute Actions
+// Helper: Book a real appointment on the GHL calendar (mirrors createGHLTask's time math).
+// Returns true if booked, false on any failure (caller falls back to a task).
+async function bookGHLAppointment(contact_id, action, client, GHL_API_KEY, assignedUserId) {
+  if (!CALENDAR_ID) return false;
+  const timeZone = client.timezone || 'America/Chicago';
+  const now = new Date();
+  const offsetMs = now.getTime() - new Date(now.toLocaleString('en-US', { timeZone })).getTime();
+  let start = new Date(now.toLocaleString('en-US', { timeZone }));
+  if (action.due_days) start.setDate(start.getDate() + action.due_days);
+  const m = (action.call_time || '').match(/(\d{1,2}):?(\d{2})?\s*(am|pm)/i);
+  if (m) {
+    let hours = parseInt(m[1]);
+    const minutes = parseInt(m[2] || '0');
+    const meridiem = m[3].toLowerCase();
+    if (meridiem === 'pm' && hours !== 12) hours += 12;
+    if (meridiem === 'am' && hours === 12) hours = 0;
+    start.setHours(hours, minutes, 0, 0);
+  }
+  // Keep calls inside 7:30am - 9:30pm: pull earlier/later requests into the window
+  {
+    const lm = start.getHours() * 60 + start.getMinutes();
+    if (lm < CALL_START_MIN) start.setHours(7, 30, 0, 0);
+    else if (lm > CALL_END_MIN) { start.setDate(start.getDate() + 1); start.setHours(7, 30, 0, 0); }
+  }
+  const startUTC = new Date(start.getTime() + offsetMs);
+  const endUTC = new Date(startUTC.getTime() + APPT_DURATION_MIN * 60 * 1000);
+  const readable = startUTC.toLocaleString('en-US', { timeZone, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  try {
+    await axios.post(
+      'https://services.leadconnectorhq.com/calendars/events/appointments',
+      {
+        calendarId: CALENDAR_ID,
+        locationId: client.location_id,
+        contactId: contact_id,
+        startTime: startUTC.toISOString(),
+        endTime: endUTC.toISOString(),
+        title: action.title || 'Phone appointment',
+        appointmentStatus: 'confirmed',
+        assignedUserId: CALENDAR_TEAM_USER_ID,  // Team Caruth -> shows on everyone's calendar
+        ignoreDateRange: true,
+        toNotify: true
+      },
+      { headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' } }
+    );
+    console.log(`📅 Booked appointment on calendar - ${readable} (${timeZone})`);
+    return true;
+  } catch (error) {
+    console.error('❌ Appointment booking failed:', error.response?.data || error.message);
+    return false;
+  }
+}
+
 async function executeActions(contact_id, contact_email, actions, client, GHL_API_KEY) {
   if (!actions || actions.length === 0) return;
   
@@ -430,11 +508,23 @@ async function executeActions(contact_id, contact_email, actions, client, GHL_AP
   
   for (const action of actions) {
     switch (action.type) {
-      case 'create_task':
-        const taskCreated = await createGHLTask(contact_id, action, client, GHL_API_KEY, workingUserId);
-        // Only count as a booked call if the task has a specific call_time
-        if (taskCreated && action.call_time) appointmentBooked = true;
+      case 'create_task': {
+        if (action.call_time) {
+          // Scheduled call -> book a REAL calendar appointment
+          const booked = await bookGHLAppointment(contact_id, action, client, GHL_API_KEY, workingUserId);
+          if (booked) {
+            appointmentBooked = true;
+          } else {
+            // Booking failed -> fall back to a task so we never lose the appointment
+            const taskCreated = await createGHLTask(contact_id, action, client, GHL_API_KEY, workingUserId);
+            if (taskCreated) appointmentBooked = true;
+          }
+        } else {
+          // Follow-up task (no scheduled call time) -> just a task
+          await createGHLTask(contact_id, action, client, GHL_API_KEY, workingUserId);
+        }
         break;
+      }
       case 'add_note':
         await addGHLNote(contact_id, action.notes, GHL_API_KEY);
         break;
@@ -526,6 +616,13 @@ app.post('/webhook', async (req, res) => {
       const segment = contactTags.includes('home seller ai') ? 'home_seller' : 'pfc';
       const KNOWLEDGE_BASE = KNOWLEDGE_BASES[segment];
       console.log(`📚 Segment: ${segment}`);
+
+      // Texting-hours guard: only reply between 7:00am and 10:30pm (their local time)
+      const nowMin = nowMinutesInTz(client.timezone || 'America/Chicago');
+      if (nowMin < TEXT_START_MIN || nowMin > TEXT_END_MIN) {
+        console.log(`🌙 Outside texting hours - holding off, not replying right now`);
+        return;
+      }
 
       // Detect lead source so the bot frames replies correctly
       const normTags = contactTags.map(t => String(t).toLowerCase().trim());
@@ -621,6 +718,8 @@ CRITICAL RULES:
    - A firm commitment or next step: e.g. will send a mortgage statement, will call the bank back
    - A major personal circumstance that actually affects the deal or timing (keep it brief)
    If their latest message contains none of the above, do NOT include an add_note action.
+11. ALWAYS prioritize getting them on the phone. Accept WHATEVER time they give you (3:15, 3:45, tonight, tomorrow, whenever) and confirm it naturally, e.g. "Sounds good, I'll give you a call at 3:15." Then set the appointment/task for that exact time. There is NO calendar-availability limit on your end, so NEVER tell a contact a time isn't available, that we don't have that slot, or that you can't do a call at their requested time. Do not let scheduling logistics ever stop you from locking in a call. If they give a specific time, treat it as a scheduled call (include call_time).
+12. CALL HOURS: only propose or confirm call times between 7:30am and 9:30pm their time. If they ask for a time outside that (like 6am or 11pm), do NOT refuse - offer the closest time that works, e.g. "I can do first thing at 7:30" or "how about 9pm tonight, or first thing in the morning?" Always still aim to lock in the call.
 
 RESPONSE FORMAT (JSON ONLY):
 {
