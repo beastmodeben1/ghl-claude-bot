@@ -627,6 +627,12 @@ app.post('/webhook', async (req, res) => {
   // Process async
   (async () => {
     try {
+      // Ignore phone-call / voicemail / system events - only respond to real text messages
+      if (!message_body || !String(message_body).trim()) {
+        console.log('📵 No text body (likely a call or system event) - not responding');
+        return;
+      }
+
       // Check if should respond (also returns the contact's tags)
       const check = await shouldRespond(contact_id, client, GHL_API_KEY);
       
@@ -722,6 +728,7 @@ TODAY'S DATE: ${new Date().toLocaleDateString('en-US', {
   day: 'numeric',
   timeZone: client.timezone || 'America/Chicago'
 })}
+CURRENT TIME: ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: client.timezone || 'America/Chicago' })} (${client.timezone || 'America/Chicago'})
 
 CALCULATING DUE_DAYS:
 - "today" or "this afternoon" → due_days: 0
@@ -758,10 +765,14 @@ CRITICAL RULES:
 11. ALWAYS prioritize getting them on the phone. Accept WHATEVER time they give you (3:15, 3:45, tonight, tomorrow, whenever) and confirm it naturally, e.g. "Sounds good, I'll give you a call at 3:15." Then set the appointment/task for that exact time. There is NO calendar-availability limit on your end, so NEVER tell a contact a time isn't available, that we don't have that slot, or that you can't do a call at their requested time. Do not let scheduling logistics ever stop you from locking in a call. If they give a specific time, treat it as a scheduled call (include call_time).
 12. CALL HOURS: only propose or confirm call times between 7:30am and 9:30pm their time. If they ask for a time outside that (like 6am or 11pm), do NOT refuse - offer the closest time that works, e.g. "I can do first thing at 7:30" or "how about 9pm tonight, or first thing in the morning?" Always still aim to lock in the call.
 13. USE the full history AND the notes/call summaries above before replying. If a price, amount, or detail differs from what was said earlier (e.g. they said 190k before and now say 260k), acknowledge the change and reconcile it - never reply as if you forgot what was already discussed. Never narrate that you are reading the history (do NOT say things like "looking at the conversation history") - just reference the facts naturally, like a person who remembers the conversation.
+14. If the contact's latest message is just an acknowledgement or a conversation-ender (ok, sounds good, will do, talk then, thanks, cool, great, sounds good, a thumbs up, or an emoji-only reply) and there is nothing meaningful to add, DO NOT reply. Return {"message": ""}. Never text just to get the last word or to be polite.
+15. Never repeat a line you've already sent, and don't re-introduce yourself or your company if you already told them who you are earlier in the thread. Saying your name/company more than once reads like a bot.
+16. PRICE PUSHBACK: if they counter on price or say the offer is too low, do NOT argue or throw out another lowball. Be understanding, say we might have another option that could work depending on a few factors, and ask if they have any flexibility on the price, then aim for a call. Example: "Totally fair. We might have another option that could work depending on a few things. Any flexibility on the price?"
+17. TIMING: use the CURRENT TIME above. NEVER confirm or reference a time that has already passed as if it's still coming up (dont say "still good for 3:30?" when it's already after 3:30). If a scheduled time already passed and they went quiet, ask when works next instead.
 
 RESPONSE FORMAT (JSON ONLY):
 {
-  "message": "Your SMS response here",
+  "message": "Your SMS response here, or an empty string \"\" to send nothing",
   "tag": "answered yes|answered no|wrong number|spam troll|neutral response|speak now|appointment booked|do not contact",
   "stop_bot": false,
   "actions": [] // Optional - include for notes, follow-up tasks, booking calls
@@ -842,7 +853,8 @@ IMPORTANT: Respond ONLY with valid JSON. No markdown, no explanations, just the 
         console.log(`🧹 Cleaned message: "${originalMessage}" → "${responseData.message}"`);
       }
 
-      // Send SMS
+      // Send SMS (only if the bot actually wrote a reply. Empty message = no reply needed)
+      if (responseData.message && responseData.message.trim()) {
       console.log(`📱 Sending SMS: "${responseData.message}"`);
       
       const smsPayload = {
@@ -868,6 +880,9 @@ IMPORTANT: Respond ONLY with valid JSON. No markdown, no explanations, just the 
       );
 
       console.log(`✅ SMS sent successfully`);
+      } else {
+        console.log('🤐 No reply needed (acknowledgement/ender or empty) - not sending');
+      }
 
       // Execute actions if any
       if (responseData.actions && responseData.actions.length > 0) {
