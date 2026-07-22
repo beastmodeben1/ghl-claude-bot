@@ -287,7 +287,27 @@ async function shouldRespond(contact_id, client, GHL_API_KEY) {
 }
 
 // Helper: Create GHL Task
-async function createGHLTask(contact_id, action, client, GHL_API_KEY) {
+// Helper: find the human rep who last worked this lead (last MANUAL text or any call).
+// Falls back to null if it's been all-bot, so the task goes to the default owner.
+async function getWorkingUserId(contact_id, account_id) {
+  try {
+    const KEY = process.env.STREAMLINED_API_KEY;
+    if (!KEY) return null;
+    const q = `SELECT user_id FROM (
+      SELECT user_id, timestamp AS ts FROM messages
+        WHERE contact_id='${contact_id}' AND account_id='${account_id}' AND direction='outbound' AND source='manual' AND user_id IS NOT NULL
+      UNION ALL
+      SELECT user_id, created_at AS ts FROM calls
+        WHERE contact_id='${contact_id}' AND account_id='${account_id}' AND user_id IS NOT NULL
+    ) t ORDER BY ts DESC LIMIT 1`;
+    const resp = await axios.post('https://gateway.streamlined.so/query/api/execute-sql', { sql: q }, { headers: { 'Content-Type': 'application/json', 'X-API-Key': KEY } });
+    if (resp.data && resp.data.status === 'error') return null;
+    const rows = (resp.data && resp.data.result) || [];
+    return rows.length && rows[0].user_id ? rows[0].user_id : null;
+  } catch (e) { return null; }
+}
+
+async function createGHLTask(contact_id, action, client, GHL_API_KEY, assignedUserId) {
   const timeZone = client.timezone || 'America/Chicago';
   const now = new Date();
 
@@ -331,7 +351,7 @@ async function createGHLTask(contact_id, action, client, GHL_API_KEY) {
         body: action.notes || '',
         dueDate: dueDateISO,
         completed: false,
-        assignedTo: client.assigned_user_id
+        assignedTo: assignedUserId || client.assigned_user_id
       },
       {
         headers: {
@@ -402,11 +422,16 @@ async function executeActions(contact_id, contact_email, actions, client, GHL_AP
   console.log(`🎬 Executing ${actions.length} action(s)...`);
   
   let appointmentBooked = false;
+
+  // Who's actually working this lead? Assign tasks to them, else default owner (Peter).
+  const workingUserId = await getWorkingUserId(contact_id, client.location_id);
+  if (workingUserId) console.log(`👤 Assigning tasks to working rep: ${workingUserId}`);
+  else console.log('👤 No human rep found - assigning to default owner');
   
   for (const action of actions) {
     switch (action.type) {
       case 'create_task':
-        const taskCreated = await createGHLTask(contact_id, action, client, GHL_API_KEY);
+        const taskCreated = await createGHLTask(contact_id, action, client, GHL_API_KEY, workingUserId);
         // Only count as a booked call if the task has a specific call_time
         if (taskCreated && action.call_time) appointmentBooked = true;
         break;
@@ -589,7 +614,13 @@ CRITICAL RULES:
 7. Keep response under 160 characters when possible
 8. Use casual language: "Yeah" not "Yes", "I get it" not "I understand"
 9. Reference their name naturally in conversation
-10. Whenever the contact shares something worth remembering (their situation, dollar amounts, timeline, who they're working with, objection details, or personal circumstances), include an add_note action summarizing it in one short line, so the team has a record just like they get from calls.
+10. NOTES - be selective, do NOT note every message. Do NOT add a note for routine stuff (greetings, "ok"/"yes", scheduling or confirming a time, acknowledgments, emojis, small talk, or a plain "idk"). Add AT MOST ONE short add_note action, and ONLY when the contact reveals something genuinely note-worthy from this list:
+   - Situation: how far behind, loan balance, monthly payment, sale/auction date, other liens
+   - What they are doing about it: loan mod, bankruptcy, reinstatement, working with the lender / an attorney / a realtor, listed or on the market, already under contract
+   - Intent: wants to sell, wants to keep the house, wants an offer, not interested, wants us to stop
+   - A firm commitment or next step: e.g. will send a mortgage statement, will call the bank back
+   - A major personal circumstance that actually affects the deal or timing (keep it brief)
+   If their latest message contains none of the above, do NOT include an add_note action.
 
 RESPONSE FORMAT (JSON ONLY):
 {
